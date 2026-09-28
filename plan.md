@@ -1,229 +1,402 @@
-# Integration Plan: AI Usage Tracker with Gemini & Antigravity (AGY)
+# Integration Plan: Gemini & Antigravity (AGY) AI Usage Tracking in Vorssaint
 
-## 1. Executive Summary & Objective
+> **Status:** reviewed, supersedes the earlier `ai-usage-bar` integration brief.
+> **Target repo:** `vorssaint-macos` (macOS 14, non-sandboxed, hardened runtime)
+> **Reference:** `temp-ai-usage-bar/` (quota-only; it has no analytics path)
 
-The goal is to merge the session/weekly quota tracking capabilities from [`/Users/aadismacbookair/Local_Codebase/ai-usage-bar`](file:///Users/aadismacbookair/Local_Codebase/ai-usage-bar) into the **Vorssaint macOS Dynamic Island** AI page (`vorssaint-macos`).
-
-### Key Goals:
-1. **Expand Providers from 2 to 4**:
-   - Currently: **Claude**, **Codex**.
-   - Target: **Claude**, **Gemini**, **AGY (Antigravity)**, **Codex**.
-   - **Strict Order**: `claude` $\rightarrow$ `gemini` $\rightarrow$ `agy` $\rightarrow$ `codex`.
-2. **Top Limit Cards (4-Provider Grid)**:
-   - Instead of 2 limit cards (Claude & Codex), render a clean **2×2 grid of 4 provider limit cards** at the top of the AI page.
-   - Each card displays both **Next 5 Hours** (`5h`) and **This Week** (`weekly`) quota allowance bars, remaining/used percentages, reset countdowns, and urgency coloring.
-3. **Retain All Existing Financial & Analytics Metrics**:
-   - Preserve all dollar calculations: equivalent API dollar spend, total tokens, cache dollar savings, 30-day plan multiples, and multi-provider proportional split bar in the **Spend Card**.
-   - Preserve the **Trend Card** (hourly/daily spend/tokens), **Live Card** (active turn progress), **Models & Projects Share Cards**, and the **13-Week Activity Heatmap**.
-4. **Zero-Telemetry Local Sourcing**:
-   - Ingest quota directly from the local Antigravity Language Server loopback RPC (`POST /exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary`) and local cache files (`~/.aiusage/gemini.json`, `~/.aiusage/antigravity.json`).
+This plan was produced by reading both codebases in full and probing the live
+Antigravity language server. It corrects three assumptions in the original
+brief. See [Corrections to the original brief](#corrections-to-the-original-brief).
 
 ---
 
-## 2. Target Final Output & UI Layout
+## 1. Research findings
 
-### A. Dynamic Island Expanded View (`NotchAgentsView`)
+These were verified on this machine, not inferred.
 
-```text
-┌────────────────────────────────────────────────────────────────────────┐
-│  AI / Coding Agents                                                    │
-├───────────────────────────────────┬────────────────────────────────────┤
-│ [✳] Claude                [Pro] • │ [✦] Gemini                 [1.5] • │
-│ Next 5 hours     resets at 8:30 PM│ Next 5 hours     resets at 8:44 PM │
-│ ━━━━━━━▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭       20% │ ━━▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭          5% │
-│ This week      resets Tue, 9:30 AM│ This week       resets Sat, 3:12 AM│
-│ ━━━━━━▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭       19% │ ━━━━━━━━━━━━▭▭▭▭▭▭▭▭▭▭▭        38% │
-├───────────────────────────────────┼────────────────────────────────────┤
-│ [∧] Antigravity           [3P] •  │ [⠶] Codex                 [Plus] • │
-│ Next 5 hours     resets at 9:43 PM│ Session          resets in 2 hr    │
-│ ▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭        0% │ ━━━━━━━▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭       22% │
-│ This week      resets Wed, 4:01 PM│ Weekly           resets in 4 d     │
-│ ▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭        0% │ ━━━━━━━━━▭▭▭▭▭▭▭▭▭▭▭▭▭▭       31% │
-├───────────────────────────────────┴────────────────────────────────────┤
-│ [S] Spend Card                                                [Today ▾]│
-│     ≥ $24.80 API value                               3.4× Pro  1.8× AGY│
-│     [══ Claude ══][== Gemini ==][= AGY =][==== Codex ====]             │
-│     1.4M tokens · 78% cached · $12.30 saved                            │
-├───────────────────────────────────┬────────────────────────────────────┤
-│ [~] Live Activity                 │ [C] Models                         │
-│     [✦] Gemini · vorssaint-macos  │     Claude 3.7 Sonnet        $14.20│
-│     03:24 · Gemini 2.5 Pro · 820T │     Gemini 2.5 Pro            $6.10│
-├───────────────────────────────────┴────────────────────────────────────┤
-│ [T] 7-Day Trend (Hourly / Daily Bars)                                  │
-│     Cost ($) or Tokens per bar with hover inspection                   │
-├────────────────────────────────────────────────────────────────────────┤
-│ [M] 13-Week Activity Heatmap (GitHub-style streak & busiest day stats) │
-└────────────────────────────────────────────────────────────────────────┘
+### 1.1 The cache holds quota only
+
+`~/.aiusage/gemini.json` is exactly the `RetrieveUserQuotaSummary` response:
+
+```json
+{ "fetched_at": 1790573561.8,
+  "raw_response": { "response": { "groups": [
+    { "displayName": "Gemini Models", "buckets": [
+        { "bucketId": "gemini-weekly", "window": "weekly", "remainingFraction": 0.25274295,
+          "resetTime": "2026-10-01T04:35:45Z" },
+        { "bucketId": "gemini-5h", "window": "5h", "remainingFraction": 0.9370475,
+          "resetTime": "2026-09-28T08:52:57Z" } ] },
+    { "displayName": "Claude and GPT models", "buckets": [
+        { "bucketId": "3p-weekly", "window": "weekly", "remainingFraction": 0.12458453,
+          "resetTime": "2026-10-03T14:55:01Z" },
+        { "bucketId": "3p-5h", "window": "5h", "remainingFraction": 1,
+          "resetTime": "2026-09-28T09:10:40Z" } ] } ] } } }
 ```
 
-### B. Provider Styling & Branding
+No tokens, no cost, no model, no project. The 5h bucket resets sooner than it
+was fetched, which is normal for a rolling window.
 
-| Provider | Enum Case | Display Name | Accent Tint | Mark / Symbol | Data Source |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Claude** | `.claude` | `Claude` | Clay (`#D87857`) | `sparkle` / Claude logo | Claude App `plan-usage-history.json` + `~/.claude/projects/` |
-| **Gemini** | `.gemini` | `Gemini` | Google Blue (`#7AA8F8`) | `sparkles` / Gemini logo | Antigravity Language Server RPC / `~/.aiusage/gemini.json` |
-| **AGY** | `.agy` | `Antigravity` | Neutral Slate (`#9AA0A6`) | `triangle` / AGY logo | Antigravity Language Server RPC / `~/.aiusage/antigravity.json` |
-| **Codex** | `.codex` | `Codex` | OpenAI Blue (`#7D9AFF`) | `chevron.left.forwardslash.chevron.right` | `~/.codex/sessions/` |
+### 1.2 Process arguments do carry the CSRF token
 
----
+The original brief (and an early reading of this repo) assumed neither
+`--csrf_token` nor `--https_server_port` was present. The real command line:
 
-## 3. Data Flow & Integration Architecture
-
-```mermaid
-graph TD
-    subgraph Local Data Sources
-        CApp[Claude Desktop App<br/>plan-usage-history.json]
-        CLogs[Claude Code Logs<br/>~/.claude/projects]
-        XLogs[Codex Session Logs<br/>~/.codex/sessions]
-        ALang[Antigravity Language Server<br/>127.0.0.1 Connect RPC]
-        ACache[Local Status Cache<br/>~/.aiusage/*.json]
-    end
-
-    subgraph AgentUsage Services
-        ALS[AgentLogWatcher / Parser]
-        AGS[AgentGeminiSource]
-        APS[AgentPricing / Catalog]
-        AStore[AgentUsageStore]
-        ASvc[AgentUsageService Coordinator]
-    end
-
-    subgraph Snapshot & UI
-        Snap[AgentUsageSnapshot]
-        NView[NotchAgentsView 2x2 Grid]
-        NStrip[NotchAgentStrip]
-        NSettings[NotchAgentsSettings]
-    end
-
-    CLogs --> ALS
-    XLogs --> ALS
-    CApp --> ASvc
-    ALang --> AGS
-    ACache --> AGS
-    AGS --> AStore
-    ALS --> AStore
-    APS --> AStore
-    AStore --> ASvc
-    ASvc --> Snap
-    Snap --> NView
-    Snap --> NStrip
-    Snap --> NSettings
+```
+language_server_macos_arm --enable_lsp --csrf_token <uuid>
+  --extension_server_port 50289 --extension_server_csrf_token <uuid>
+  --workspace_id file_Users_..._vorssaint-macos
+  --cloud_code_endpoint https://daily-cloudcode-pa.googleapis.com
+  --subclient_type ide --app_data_dir antigravity-ide
+  --parent_pipe_path /var/folders/.../server_08ed1ca0a3f03d86
 ```
 
----
+- `--csrf_token` **is** available from `ps`. No need to read it from the cache.
+- `--https_server_port` **is not** a flag. The HTTPS listener is bound
+  dynamically (`50291`, `50292`, `50300` for that pid). `lsof` probing is
+  unavoidable; `--extension_server_port` and its neighbours are not a reliable
+  predictor.
+- The cache file is **stale by design risk**: it recorded `pid 2161,
+  port 49547`, and pid 2161 no longer exists. Cache entries are hints, never
+  trusted without validation.
 
-## 4. File-by-File Implementation Plan
+### 1.3 Analytics do exist, but over RPC rather than files
 
-### Step 1: Core Models & Provider Enum
-**File**: `Sources/Vorssaint/Services/AgentUsage/AgentUsageModels.swift`
-* Update `AgentProvider` to:
-  ```swift
-  enum AgentProvider: String, CaseIterable, Identifiable, Codable {
-      case claude, gemini, agy, codex
-  }
-  ```
-* Update `displayName`:
-  - `.claude` $\rightarrow$ `"Claude"`
-  - `.gemini` $\rightarrow$ `"Gemini"`
-  - `.agy` $\rightarrow$ `"Antigravity"`
-  - `.codex` $\rightarrow$ `"Codex"`
-* Update `symbol`:
-  - `.claude` $\rightarrow$ `"sparkle"`
-  - `.gemini` $\rightarrow$ `"sparkles"`
-  - `.agy` $\rightarrow$ `"triangle"`
-  - `.codex` $\rightarrow$ `"chevron.left.forwardslash.chevron.right"`
+`AgentAntigravityUsage`'s analytics source is not a log file. The language
+server binary embeds the full Connect service surface (~300
+`LanguageServerService` methods). The read-only ones that matter:
 
-### Step 2: Port Gemini & Antigravity Quota Ingestion
-**New File**: `Sources/Vorssaint/Services/AgentUsage/AgentGeminiSource.swift`
-* Port the robust discovery, local trust handling, and RPC parser from `/Users/aadismacbookair/Local_Codebase/ai-usage-bar/Sources/AIUsageBar/GeminiSource.swift`:
-  - `LocalTrustDelegate`: Validates self-signed TLS certificates exclusively on loopback (`127.0.0.1`, `::1`, `localhost`).
-  - `discoverEndpoints()`:
-    1. Reads `~/.aiusage/antigravity.json` if available.
-    2. Runs `/bin/ps -axo pid=,args=` to discover running `language_server` instances with `--csrf_token` and `--https_server_port`.
-    3. Falls back to `/usr/sbin/lsof` to find active listening TCP ports for the process.
-  - `readCached()`: Ingests `~/.aiusage/gemini.json` if the language server is temporarily unreachable.
-  - `parse(_ groups:)`: Maps returned buckets into Vorssaint's `AgentLimitWindow`:
-    - `id.hasPrefix("gemini")` $\rightarrow$ `.gemini`
-    - `id.hasPrefix("3p")` or other $\rightarrow$ `.agy`
-    - Window `"5h"` $\rightarrow$ `.session` (300 min)
-    - Window `"weekly"` $\rightarrow$ `.weekly` (10,080 min)
-    - `usedFraction = 1.0 - remainingFraction`
-    - `resetsAt`: Parsed from ISO8601 date string.
+| Method | Provides |
+| --- | --- |
+| `GetAllCascadeTrajectories` | trajectory list (mirrored into the `antigravityUnifiedStateSync.trajectorySummaries` vscdb key, 80 KB, protobuf-framed) |
+| `GetCascadeTrajectoryGeneratorMetadata` | per-step model + usage |
+| `GetCascadeTrajectoryExecutorMetadatas` | executor-side per-step metadata |
+| `GetCascadeTrajectorySteps` | full step content |
+| `GetUserTrajectory`, `GetConversationMetadata` | trajectory detail |
+| `GetAvailableModels`, `GetModelStatuses` | model catalogue |
 
-### Step 3: Integrate with `AgentUsageService`
-**File**: `Sources/Vorssaint/Services/AgentUsage/AgentUsageService.swift`
-* Add an instance of `AgentGeminiSource`.
-* In `tickTimer()`, invoke `geminiSource.fetch { [weak self] snapshot in ... }`.
-* When limits are retrieved for `.gemini` and `.agy`, update `store.limits[.gemini]` and `store.limits[.agy]`.
-* Register `.gemini` and `.agy` in `snapshot.seen` so they appear in `providers`.
+The binary also contains the Gemini usage field names: `usageMetadata`,
+`promptTokenCount`, `candidatesTokenCount`, `cachedContentTokenCount`,
+`totalTokenCount`, `modelVersion`, `finishReason`, plus `modelName`,
+`modelDisplayName`, `trajectoryId`, `stepIndex`, `createdTime`, `agentName`.
 
-### Step 4: UI Styling, Marks & Visual Hierarchy
-**File**: `Sources/Vorssaint/UI/Notch/NotchAgentComponents.swift`
-* Update `AgentProvider.tint`:
-  - `.claude`: `Color(red: 0.85, green: 0.47, blue: 0.34)`
-  - `.gemini`: `Color(red: 0.48, green: 0.66, blue: 0.97)`
-  - `.agy`: `Color(red: 0.60, green: 0.63, blue: 0.65)`
-  - `.codex`: `Color(red: 0.49, green: 0.60, blue: 1.0)`
-* Add brand mark assets or vector paths for Gemini and Antigravity in `AgentMarks.lookUp`.
+That is the same shape `AgentLogParser` already consumes for Claude and Codex,
+so it can feed the existing store without a new accounting model.
 
-### Step 5: Layout Grid in `NotchAgentsView` & `NotchAgentSupport`
-**Files**: 
-* `Sources/Vorssaint/Services/Notch/NotchAgentSupport.swift`
-* `Sources/Vorssaint/UI/Notch/NotchAgentsView.swift`
-* Update provider list in `NotchAgentsView`:
-  ```swift
-  @AppStorage(DefaultsKey.notchAgentsClaude) private var claude = true
-  @AppStorage(DefaultsKey.notchAgentsGemini) private var gemini = true
-  @AppStorage(DefaultsKey.notchAgentsAgy) private var agy = true
-  @AppStorage(DefaultsKey.notchAgentsCodex) private var codex = true
+### 1.4 What is *not* available on disk
 
-  private var providers: [AgentProvider] {
-      [claude ? AgentProvider.claude : nil,
-       gemini ? .gemini : nil,
-       agy ? .agy : nil,
-       codex ? .codex : nil].compactMap { $0 }
-          .filter(usage.snapshot.seen.contains)
-  }
-  ```
-* Because `NotchAgentSupport.rows` pairs cards 2 per row when width $\ge 390\text{ pt}$, the 4 limit cards automatically arrange into a 2×2 grid:
-  - Row 1: `[ Claude, Gemini ]`
-  - Row 2: `[ AGY, Codex ]`
-* Ensure the reset formatters in `NotchAgentLimitsCard` support both clock times (`resets at 8:30 PM`) and relative durations (`resets in 18 min`).
+- `~/Library/Application Support/Antigravity/User/{globalStorage,workspaceStorage}/*/state.vscdb`
+  holds trajectory **summaries** only: title, trajectory id, created/updated
+  timestamps, workspace folder URI. No model, no tokens.
+- `~/.antigravity/extensions/` is just extensions.
+- No cascade directory, no conversation store, no session logs equivalent to
+  `~/.claude/projects/` or `~/.codex/sessions/`.
 
-### Step 6: Settings & Persistence
-**Files**:
-* `Sources/Vorssaint/Core/Defaults.swift`
-* `Sources/Vorssaint/UI/Settings/NotchAgentsSettings.swift`
-* Add defaults keys:
-  - `DefaultsKey.notchAgentsGemini = "notchAgentsGemini"` (default: `true`)
-  - `DefaultsKey.notchAgentsAgy = "notchAgentsAgy"` (default: `true`)
-* In `NotchAgentsSettingsControls`, add toggle rows for Gemini and Antigravity alongside Claude and Codex.
+### 1.5 TLS
+
+The extension ships `dist/languageServer/cert.pem`. The server uses a
+self-signed certificate, so the reference app's blanket loopback trust works,
+but the cert can be pinned instead (see Phase 2).
 
 ---
 
-## 5. Verification & Acceptance Criteria
+## 2. Decisions locked
 
-1. **Top Grid Layout**:
-   - Dynamic Island displays 4 distinct limit cards in order: **Claude**, **Gemini**, **Antigravity**, **Codex**.
-   - Each card displays both 5-hour and weekly progress bars with accurate percentages.
-2. **Dynamic Island Closed Strip**:
-   - Active turn status, elapsed clock, and burn rates reflect correctly when any of the 4 agents are working.
-3. **Financial Tracking Preserved**:
-   - Spend Card shows combined API value ($), total tokens, cache hit rates, and dollar savings.
-   - The multi-colored proportional split bar displays colored segments for all active providers.
-4. **Settings Toggles**:
-   - Disabling Gemini or AGY in Settings immediately removes their card from the island without breaking layout pairing.
-5. **Resilience & Fallbacks**:
-   - If Antigravity IDE is closed, Gemini & AGY cards gracefully display `"Antigravity isn't running"` or show last known cached readings with dimmed stale indicators, exactly like `ai-usage-bar`.
+1. **Analytics: research-first, gated.** Phase 0 is a spike against
+   `GetAllCascadeTrajectories` + `GetCascadeTrajectoryGeneratorMetadata`. Quota
+   ships regardless. Gemini/AGY enter Spend/Models/Projects/Live/Trend/Heatmap
+   **only** if the spike proves per-step tokens + model + timestamp + workspace.
+2. **Availability: the card is always present.** An enabled provider gets a card
+   with an explicit state, never a silently missing card.
+3. **Discovery: `ps` → `lsof` → fast probe → adopt.** The cache file is a
+   shortcut hint only.
 
 ---
 
-## 6. Build & Sandboxing Notes for Implementing Agents
+## 3. Product target
 
-* When compiling with `swiftc` or running `./build.sh --test` in sandboxed terminal environments, Clang module cache and temporary directories must be redirected to the workspace:
-  ```bash
-  mkdir -p build/tmp build/module-cache
-  export TMPDIR="$PWD/build/tmp"
-  export CLANG_MODULE_CACHE_PATH="$PWD/build/module-cache"
-  ```
-* Standard dev build: `./build.sh --dev`
-* Full test suite: `./build.sh --test`
+Provider order is a display contract, not alphabetical:
+
+```
+claude → gemini → agy → codex
+```
+
+| Provider | Enum | Display name | Tint | Mark | Quota source | Analytics source |
+| --- | --- | --- | --- | --- | --- | --- |
+| Claude | `.claude` | Claude | `0.85, 0.47, 0.34` | `sparkle` | `plan-usage-history.json` | `~/.claude/projects/` |
+| Gemini | `.gemini` | Gemini | `0.48, 0.66, 0.97` | `sparkles` | LS RPC | trajectory generator metadata |
+| Antigravity | `.agy` | Antigravity | `0.60, 0.63, 0.65` | `triangle` | LS RPC | trajectory generator metadata |
+| Codex | `.codex` | Codex | `0.49, 0.60, 1.0` | `chevron.left.forwardslash.chevron.right` | session log | `~/.codex/sessions/` |
+
+AI page: 2×2 grid of provider limit cards (5h + weekly bars, remaining/used,
+reset countdown, urgency colour, explicit unavailable state), then the existing
+Spend, Live, Models, Projects, Trend and 13-week activity cards, all of which
+must keep working.
+
+All six existing cards stay accurate. Where Gemini/AGY have no data, they are
+absent from those cards rather than estimated into them.
+
+---
+
+## 4. Phase 0 — Analytics spike (gate)
+
+Runs before Phase 5. Read-only RPC calls only.
+
+1. Discover the endpoint per Phase 2.
+2. `GetAllCascadeTrajectories` → confirm trajectory ids, titles, timestamps,
+   workspace URIs.
+3. `GetCascadeTrajectoryGeneratorMetadata` for one finished trajectory →
+   confirm `modelName`, `promptTokenCount`, `candidatesTokenCount`,
+   `cachedContentTokenCount`, `createdTime` per step, and whether the
+   workspace/project is attributable.
+4. Confirm the model names map onto `AgentPriceList` rows (or must be added).
+
+**Gate outcome:**
+
+- **Pass** → Phase 5 proceeds; Gemini/AGY join all six analytics cards.
+- **Fail** → Phase 5 is dropped. Quota ships alone. Spend/Trend/Models/Projects/
+  Live/Heatmap keep Claude + Codex and stay 100% accurate. The four limit cards
+  still show Gemini/AGY. This is the correct outcome, not a failure: the
+  numbers would otherwise be inferred rather than measured, and the brief's
+  requirement to "retain all financial metrics" means *accurate*, not *present*.
+
+Nothing else in this plan depends on the outcome.
+
+---
+
+## 5. Phase 1 — Models and provider enum
+
+`Sources/Vorssaint/Services/AgentUsage/AgentUsageModels.swift`
+
+- `AgentProvider`: add `case gemini, agy` at positions 2 and 3.
+- `displayName`: `.gemini` → `"Gemini"`, `.agy` → `"Antigravity"`.
+- `symbol`: `.gemini` → `"sparkles"`, `.agy` → `"triangle"`.
+- `AgentLimits.Source`: add `case antigravity`.
+- `AgentLimits`: add `var reach: Reach = .live` with
+  `enum Reach { case live, cached, unavailable }`.
+
+`reach` plus `windows.isEmpty` is what the card reads to choose between bars,
+stale dimming, and the "isn't running" state. This keeps `seen` working
+unchanged: an empty-windows entry still puts the key in `store.limits`, and
+`AgentUsageSummary` already derives `seen` from `Set(limits.keys)`.
+
+Sweep the exhaustive switches that adding enum cases breaks:
+
+- `AgentUsageSummary.swift`
+- `NotchAgentComponents.swift`
+- `NotchAgentSupport.swift`
+- `AgentUsageService.read()`
+
+`AgentLogParser.swift` needs no change. It hardcodes `.claude` (line 104) and
+`.codex` (lines 193, 253) and has no provider switch.
+
+---
+
+## 6. Phase 2 — Antigravity quota source
+
+New file: `Sources/Vorssaint/Services/AgentUsage/AgentAntigravityUsage.swift`
+
+Named to match the existing `AgentClaudeAppUsage`. The brief's
+`AgentGeminiSource` breaks repo convention, and one source serves both
+providers.
+
+**`discover()`**
+
+1. `/bin/ps -axo pid=,args=` through `BoundedProcessRunner` (never a raw
+   `Process`); keep lines matching `language_server_macos_arm`; extract pid and
+   `--csrf_token`.
+2. `/usr/sbin/lsof -nP -iTCP -sTCP:LISTEN -a -p <pid>` → candidate loopback
+   ports.
+3. `probe(port)`: POST Connect-JSON to
+   `https://127.0.0.1:<port>/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary`
+   with header `x-codeium-csrf-token`, 1.5s timeout. Non-200 fails fast
+   (measured ~0.5ms), so probing 3–7 candidates is cheap.
+4. Cache the winning `(pid, port, token, certFingerprint)` in memory;
+   re-validate when the pid dies.
+5. `~/.aiusage/antigravity.json` is consulted as a hint before step 1, and
+   always validated the same way.
+
+**TLS** — `URLSessionDelegate` accepting a self-signed certificate *only* for
+`127.0.0.1`, `::1`, `localhost`. Preferred: pin the public key from
+`dist/languageServer/cert.pem`, falling back to loopback-scoped trust.
+Non-loopback always uses default validation.
+
+**`parse(groups:)`** — mapping is fixed by the payload:
+
+- `gemini-*` → `.gemini`; `3p-*` → `.agy`
+- `5h` → `AgentLimitWindow.Kind.session` / 300 minutes
+- `weekly` → `.weekly` / 10,080 minutes
+- `usedFraction = 1.0 - remainingFraction`
+- `resetTime` parsed as ISO8601
+- unknown bucket ids are dropped, never guessed
+
+**Failure states**
+
+| Condition | Result |
+| --- | --- |
+| RPC ok | windows populated, `reach: .live` |
+| RPC failed, cache fresh | windows from cache, `reach: .cached` |
+| RPC failed, cache stale (>45 min) | windows from cache, `reach: .cached`, dimmed |
+| nothing running, no cache | `windows: []`, `reach: .unavailable` |
+| Antigravity never launched | `windows: []`, `reach: .unavailable` |
+
+**Cadence** — discovery every 60s, RPC every 30s aligned with the service tick.
+Never blocks `AgentUsageService.queue`.
+
+---
+
+## 7. Phase 3 — Service wiring
+
+`Sources/Vorssaint/Services/AgentUsage/AgentUsageService.swift`
+
+- `private let antigravity = AgentAntigravityUsage()`, injected so tests can
+  substitute.
+- In `tickTimer()`, after `readClaudeApp(now:)`, call `readAntigravity(now:)`.
+- Hop back onto `queue` before `store.setLimits`. The store is queue-confined
+  and not thread-safe.
+- On provider disable, mirror the existing `store.clearLimits(.claude)` path
+  for `.gemini` and `.agy`.
+- `checkLimits()` and `reportRenewals()` are already provider-generic, so
+  threshold alerts and renewal notices work unchanged. `NotchService` line 2410
+  already renders `provider.displayName`, so no new notification copy is needed.
+
+---
+
+## 8. Phase 4 — UI
+
+- `NotchAgentComponents.swift` — tints and `AgentMarks.lookUp` entries for
+  gemini/agy; port the reference marks from `temp-ai-usage-bar/Resources/`.
+- `NotchAgentsView.swift` — add both `@AppStorage` toggles and extend the
+  `providers` list. **Remove `.filter(usage.snapshot.seen.contains)`**: enabled
+  providers always render, and the card picks its own state. Keeping the filter
+  makes the "isn't running" state unreachable, contradicting the brief's
+  acceptance criterion 5.
+- `NotchAgentSupport.rows` already pairs at `width >= 390` (`pairWidth`), so
+  four cards give 2×2 with no layout change. Verify instead that a leftover odd
+  count (toggle one provider off) still pairs cleanly, and that the closed
+  strip still fits — `stripWingRange` is `44...80` and a 3-provider strip is
+  wider than a 2-provider one.
+- Reset formatters must render absolute (`resets at 8:30 PM`) *and* relative
+  (`resets in 18 min`): Gemini/AGY supply absolute reset times, Codex relative.
+
+---
+
+## 9. Phase 5 — Analytics (gated on Phase 0)
+
+Only if the spike passes.
+
+- `AgentAntigravityUsage.trajectories()` → `[AntigravityStep]` (trajectoryId,
+  stepIndex, createdTime, modelName, promptTokenCount, candidatesTokenCount,
+  cachedContentTokenCount, workspace path).
+- Feed through the existing `AgentLogEntry.usage` path so `AgentUsageStore`,
+  `AgentPricing`, `AgentUsageSummary`, the 13-week heatmap and `fullyPriced`
+  work unchanged.
+- Add Gemini 2.5/3, Claude Sonnet/Opus and GPT-OSS rows to `AgentPriceList`.
+- Poll less often than quota — trajectories are immutable once finished — and
+  cache by `trajectoryId` to avoid re-walking history.
+
+---
+
+## 10. Phase 6 — Settings and persistence
+
+- `Defaults.swift` — `notchAgentsGemini` and `notchAgentsAgy`, both default
+  `true`, in the `DefaultsKey` block and in `registeredDefaults`.
+- Both are automatically covered by `SettingsBackupSupport.exportKeys()`, which
+  unions `registeredDefaults`. No change needed there;
+  `PreferenceCleanupTests.sh` should pass untouched.
+- `NotchAgentsSettings.swift` — toggle rows. The "find the Claude app / get
+  Claude" block stays Claude-only.
+
+---
+
+## 11. Phase 7 — Localization
+
+- New `NotchAgentStrings` fields: `antigravityNotRunning`, `quotaStale`,
+  `fiveHour`, plus per-provider display names.
+- **All 14 locales.** `LocalizationTests.check` validates argument identity, so
+  any positional `%1$@` reuse must stay correct across every locale.
+
+---
+
+## 12. Validation and quality control
+
+| Gate | Command |
+| --- | --- |
+| Compile | `./build.sh --dev` |
+| Full suite | `./build.sh --test` |
+| Targeted | `./build.sh --test-suite=agents` |
+| Lint | `Tests/mutation_checks.py` (no agent coverage today — extend it) |
+
+`build.sh` keeps an explicit `TEST_SOURCES` list (line 252 block). A new test
+file that is not added there silently never compiles.
+
+### New tests — `Tests/AgentAntigravityTests.swift`
+
+Fixtures in `Tests/Fixtures/antigravity/`.
+
+- **`ps` parsing** — three pid shapes, missing token, killed pid, no
+  `--https_server_port`.
+- **`lsof` parsing** — seven sockets for one pid, non-TCP rows, permission
+  denied.
+- **Port probe** — first candidate dead, second alive, all dead, 1.5s timeout
+  honoured.
+- **Quota parse** — the real payload in §1.1: `.gemini` gets 0.937 / 0.253,
+  `.agy` gets 1.0 / 0.875. Plus empty groups, missing `resetTime`, unknown
+  bucket ids, `remainingFraction` out of range.
+- **TLS** — loopback self-signed accepted; a self-signed cert for a non-loopback
+  host rejected.
+- **State machine** — live → cached at 45 min → unavailable → back to live.
+- **Service** — limits set on the queue, cleared on toggle-off, no cross-thread
+  store access.
+- **Store/summary** — an empty-windows entry still lands in `seen`.
+- **UI** — four cards pair into two rows at 420pt; three cards; one card; strip
+  wing width with four providers.
+- **Analytics (gated)** — one trajectory fixture → correct tokens, model, cost,
+  and heatmap day.
+
+---
+
+## 13. Risks and open items
+
+- **Tier badges** (Pro / 1.5 / 3P / Plus in the brief's mockup) would need
+  `FetchUserInfo` or `GetDeploymentConfig`. Unverified. Ship without badges; do
+  not block on them.
+- **Multiple language servers.** Three were running during research. Only the
+  one whose `--workspace_id` matches a tracked root should feed the project
+  dimension, and quota must be read once, not summed across pids.
+- **Antigravity pricing.** Quota is consumed "proportionally to the cost of the
+  tokens", so free 3P models such as GPT-OSS have a materially lower effective
+  price. Pricing rows must be researched, not guessed.
+- **Cache staleness.** `~/.aiusage/antigravity.json` recorded a dead pid. Any
+  cache read must be validated against a live process.
+- **Sandboxing.** The app is non-sandboxed with hardened runtime and has no ATS
+  local-network exception. Loopback HTTPS needs none, but `build.sh` in a
+  sandboxed shell must redirect the Clang module cache and `TMPDIR` into
+  `build/`, per the brief.
+
+---
+
+## 14. Corrections to the original brief
+
+| Brief said | Reality | Consequence |
+| --- | --- | --- |
+| Gemini/AGY appear in Spend, Models, Live cards | Quota sources carry no tokens; the reference app has no analytics path at all | Phase 0 gate decides; failing it means limits-only, which is correct rather than a shortfall |
+| Provider hidden unless in `snapshot.seen` | An empty entry is invisible, so "isn't running" can never render | Filter removed; `AgentLimits.reach` drives explicit states |
+| `ps` supplies `--https_server_port` and `--csrf_token` | Only `--csrf_token` is a flag; the port must come from `lsof`, and the cache is only a hint | Phase 2 discovery is `ps` → `lsof` → probe → adopt |
+| Loopback self-signed trust is sufficient | The extension ships its own `cert.pem` | Pin the cert; keep loopback-scoped trust as fallback |
+| New file `AgentGeminiSource.swift` | Convention is `AgentClaudeAppUsage` | `AgentAntigravityUsage.swift`, one source for both providers |
+
+---
+
+## 15. Definition of done
+
+- Four limit cards render in the order Claude, Gemini, Antigravity, Codex, with
+  5h and weekly bars, correct percentages, reset countdowns and urgency colour.
+- An enabled but unavailable provider shows its explicit state, not a blank
+  card and not a missing one.
+- Disabling a provider removes its card without breaking row pairing.
+- Claude and Codex quota, Spend, Trend, Live, Models, Projects and the 13-week
+  heatmap are byte-for-byte unchanged in behaviour; all existing tests pass.
+- Gemini/AGY analytics either work from measured data or are absent — never
+  estimated.
+- All 14 locales complete and `LocalizationTests` passes.
+- Zero network traffic leaves the machine.
