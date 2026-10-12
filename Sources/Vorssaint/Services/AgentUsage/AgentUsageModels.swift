@@ -123,7 +123,8 @@ struct AgentLimitWindow: Equatable, Identifiable {
 
 struct AgentLimits: Equatable {
     enum Source: Equatable {
-        /// Saved on this Mac by the Claude app, which checks them itself.
+        /// Saved on this Mac by the Claude app, which checks them itself, or
+        /// by a Claude Code status line hook.
         case claudeApp
         /// Copied by the agent into its session log with each response.
         case sessionLog

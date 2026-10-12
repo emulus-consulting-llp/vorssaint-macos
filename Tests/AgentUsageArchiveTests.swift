@@ -393,6 +393,10 @@ enum AgentUsageArchiveSettleTests {
         static func remove() { removed += 1 }
     }
 
+    enum AgentCodexSessionBudget {
+        static func remove() {}
+    }
+
     class Fixture {
         let queue = DispatchQueue(label: "com.vorssaint.agent-usage.settle-test")
         var saved = 0
@@ -439,6 +443,9 @@ enum AgentUsageArchiveSaveTests {
         var enabled: Set<AgentProvider> = [.claude]
         var store = AgentUsageStore()
         var cursors: [String: AgentLogCursor] = [:]
+        // Codex is off here, so the budget is never written.
+        var codexBudget = AgentCodexSessionBudget()
+        var savedCodexBudget: AgentCodexSessionBudget?
     }
 
     static func run(_ suite: TestSuite) {

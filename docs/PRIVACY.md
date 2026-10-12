@@ -58,6 +58,12 @@ cache or install hooks. Quota observations may join the existing local usage
 archive; tokens do not. Turning off or pausing the feature cancels requests.
 See [quota behavior and limitations](AI-USAGE-QUOTAS.md).
 
+With Claude on, the fork also reads `~/.aiusage/claude.json`, written by a personal
+Claude Code status line hook, for Claude's percentages and renewal times. The
+personal Codex session budget is computed from the weekly readings already in Codex
+logs and kept in the app's cache folder beside the usage archive. Neither opens a
+connection, and both are removed or ignored as the AI section is turned off.
+
 ### Community features
 
 Vorssaint opens only a few kinds of connection, and each one belongs to a visible feature.

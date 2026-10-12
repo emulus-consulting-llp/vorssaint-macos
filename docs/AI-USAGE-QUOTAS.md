@@ -14,6 +14,27 @@ live activity. With only these providers enabled, the page shows limit cards onl
 Warning and reset notifications for these two pools are deferred; existing
 providers retain their notifications.
 
+## Claude and Codex session bars
+
+**Claude** shows its five-hour session and weekly limit from the newer of two local
+readings: the Claude app's saved plan history, or `~/.aiusage/claude.json`, which
+the personal Claude Code status line hook from the ai-usage-bar prototype writes on
+every render. That file carries exact renewal times. It is as fresh as Claude Code's
+last render; after 30 minutes the bars dim, and a window that has since renewed is
+left out instead of shown empty. Without either reading, the card keeps its
+previous estimated-session behavior.
+
+**Codex** plans that report only a weekly window gain a **Session** bar from a
+personal budget: 10 percentage points of the weekly window per five-hour session. A
+session starts at the first reading that shows the weekly window went up and ends
+five hours later. 100% means those 10 points are spent. Codex itself does not
+enforce this; it is computed from the weekly readings Codex writes to its session
+logs, and plans with their own five-hour window are left unchanged. A new week
+counts what it already shows. A banked reset or an account change starts the count
+again. The budget is display-only and sends no notifications. Its state is kept in
+`codex-session-budget.json` beside the usage archive, so a relaunch keeps the
+running session.
+
 ## Reading states
 
 The app checks when the feature starts, when the AI page opens, and about once a

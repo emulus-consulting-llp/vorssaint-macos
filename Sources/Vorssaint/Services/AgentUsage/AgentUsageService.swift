@@ -97,6 +97,10 @@ final class AgentUsageService: ObservableObject {
     private var claudeProfileModified: Date?
     private var claudeAppModified: Date?
     private var claudeAppSamples: [AgentClaudeAppUsage.Sample] = []
+    private var claudeStatusLineModified: Date?
+    private var claudeStatusLineData: Data?
+    private var codexBudget = AgentCodexSessionBudget()
+    private var savedCodexBudget: AgentCodexSessionBudget?
     private var shippedPrices: AgentPriceList?
     private var previousLimits: [AgentProvider: AgentLimits] = [:]
     /// Warned windows, each waiting for its renewal.
@@ -202,6 +206,10 @@ final class AgentUsageService: ObservableObject {
             claudeProfileModified = nil
             claudeAppModified = nil
             claudeAppSamples = []
+            claudeStatusLineModified = nil
+            claudeStatusLineData = nil
+            codexBudget = AgentCodexSessionBudget()
+            savedCodexBudget = nil
             savedMark = nil
             lastSave = .distantPast
         }
@@ -213,6 +221,7 @@ final class AgentUsageService: ObservableObject {
         guard running else { return }
         queue.async { [self] in
             guard readerSession >= 0, enabled.contains(reading.provider) else { return }
+            if reading.provider == .codex { codexBudget.observe(reading) }
             store.updateLimits(reading)
             checkLimits()
             schedulePublish()
@@ -293,6 +302,10 @@ final class AgentUsageService: ObservableObject {
             enabled = providers
             store = AgentUsageStore()
             cursors.removeAll()
+            if providers.contains(.codex) {
+                savedCodexBudget = AgentCodexSessionBudget.load()
+                codexBudget = savedCodexBudget ?? AgentCodexSessionBudget()
+            }
             // Prices first, so the first read is already priced.
             loadPrices()
             // Keep the loading state until all initial history has been read.
@@ -341,7 +354,12 @@ final class AgentUsageService: ObservableObject {
     /// Main thread.
     private func settleArchive(keeping keeps: Bool) {
         queue.sync {
-            if keeps { saveProgress() } else { AgentUsageArchive.remove() }
+            if keeps {
+                saveProgress()
+            } else {
+                AgentUsageArchive.remove()
+                AgentCodexSessionBudget.remove()
+            }
         }
     }
 
@@ -349,6 +367,9 @@ final class AgentUsageService: ObservableObject {
     /// on `queue`.
     private func saveProgress() {
         guard readerSession >= 0 else { return }
+        if enabled.contains(.codex), codexBudget != savedCodexBudget, AgentCodexSessionBudget.save(codexBudget) {
+            savedCodexBudget = codexBudget
+        }
         let mark = progressMark
         lastSave = Date()
         guard mark != savedMark else { return }
@@ -512,6 +533,9 @@ final class AgentUsageService: ObservableObject {
             }
             guard !entries.isEmpty else { return }
             changed = true
+            if provider == .codex {
+                for case .limits(let reading) in entries { codexBudget.observe(reading) }
+            }
             let isSubagent = provider == .opencode && !cursor.state.parentSession.isEmpty
             let turnFile = provider == .opencode && !cursor.state.session.isEmpty ? "\(path)#\(cursor.state.session)" : path
             let tracksTurns = isSubagent ? false : cursor.tracksTurns
@@ -635,7 +659,11 @@ final class AgentUsageService: ObservableObject {
         var plans: [AgentProvider: AgentPlan] = [:]
         if let claudePlan { plans[.claude] = claudePlan }
         if let codex = AgentPlans.codex(planType: store.codexPlan) { plans[.codex] = codex }
-        let next = store.snapshot(plans: plans, providers: enabled, now: Date())
+        let now = Date()
+        var next = store.snapshot(plans: plans, providers: enabled, now: now)
+        // The personal session budget is shown, never warned about: it is a
+        // plan of one's own, not an allowance Codex enforces.
+        if enabled.contains(.codex) { next.limits[.codex] = codexBudget.adding(to: next.limits[.codex], now: now) }
         published = next
         checkBudget(next)
         let checked = enabled.contains(.claude) ? claudeAppSamples.last(where: {
@@ -749,6 +777,8 @@ final class AgentUsageService: ObservableObject {
             if store.limits[.claude]?.source == .claudeApp { store.clearLimits(.claude) }
             claudeAppModified = nil
             claudeAppSamples = []
+            claudeStatusLineModified = nil
+            claudeStatusLineData = nil
             return
         }
         let url = AgentClaudeAppUsage.historyURL(home: home)
@@ -761,8 +791,19 @@ final class AgentUsageService: ObservableObject {
         // Claude Code's own first request can place the session's start.
         let start = AgentClaudeAppUsage.sessionStart(store.records, samples: claudeAppSamples,
                                                      organization: claudeOrganization)
-        if let limits = AgentClaudeAppUsage.limits(from: claudeAppSamples, now: now, sessionStart: start,
-                                                   organization: claudeOrganization) {
+        let app = AgentClaudeAppUsage.limits(from: claudeAppSamples, now: now, sessionStart: start,
+                                             organization: claudeOrganization)
+        // Claude Code's status line, when a hook keeps it, reports the same
+        // account with exact renewal times; the newer of the two is shown.
+        let statusURL = AgentClaudeStatusLineUsage.cacheURL(home: home)
+        let statusModified = (try? statusURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        if statusModified != claudeStatusLineModified {
+            claudeStatusLineModified = statusModified
+            claudeStatusLineData = statusModified == nil ? nil : try? Data(contentsOf: statusURL)
+        }
+        let statusLine = claudeStatusLineData.flatMap { AgentClaudeStatusLineUsage.limits(from: $0, now: now) }
+        let newest = [app, statusLine].compactMap { $0 }.max { $0.observedAt < $1.observedAt }
+        if let limits = newest {
             store.setLimits(limits)
         } else if store.limits[.claude]?.source == .claudeApp {
             store.clearLimits(.claude)

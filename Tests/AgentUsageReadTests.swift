@@ -75,6 +75,8 @@ enum AgentUsageReadTests {
         var publications: [AgentUsageSnapshot] = []
         var events: [AgentUsageEvent] = []
         var savedMark: Int?
+        var codexBudget = AgentCodexSessionBudget()
+        var savedCodexBudget: AgentCodexSessionBudget?
         var progressMark: Int { 0 }
         func saveProgress() {}
         func startTimer() {}
