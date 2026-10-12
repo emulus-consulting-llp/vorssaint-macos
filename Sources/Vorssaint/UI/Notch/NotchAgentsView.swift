@@ -179,6 +179,7 @@ private struct NotchAgentLimitsCard: View {
                     } else { estimate }
                 } else {
                     VStack(spacing: 5) {
+                        if missingSession { pendingSession }
                         ForEach(windows) { window in
                             if !provider.supportsAnalytics, (window.resetsAt ?? .distantPast) <= now {
                                 VStack(alignment: .leading, spacing: 2) {
@@ -256,6 +257,50 @@ private struct NotchAgentLimitsCard: View {
                             tint: tint, height: 4)
         }
         .help(help(window))
+    }
+
+    /// Claude keeps its session row while the readings have none: a session
+    /// that renewed after the last reading has spent an unknown amount since.
+    private var missingSession: Bool {
+        provider == .claude && !windows.isEmpty && !windows.contains { $0.kind == .session }
+    }
+
+    /// The session's place until the next reading, timed by Claude Code's own
+    /// first request when this Mac saw one.
+    private var pendingSession: some View {
+        let block = snapshot.claudeBlock.flatMap { $0.end > now ? $0 : nil }
+        let elapsed = block.map { block -> Double in
+            let length = block.end.timeIntervalSince(block.start)
+            return length > 0 ? now.timeIntervalSince(block.start) / length : 0
+        }
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 5) {
+                Text(text.session)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                Group {
+                    if let block {
+                        Label(countdown(to: block.end), systemImage: "arrow.clockwise")
+                            .labelStyle(NotchAgentInlineLabel())
+                    } else {
+                        Text(quotaText.waiting)
+                    }
+                }
+                .font(.system(size: 9.5))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                Spacer(minLength: 2)
+                Text("—")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+            NotchAgentMeter(value: 0, pace: elapsed.map { display == .remaining ? 1 - $0 : $0 },
+                            tint: provider.tint, height: 4, dimmed: true)
+        }
+        .help(quotaText.waiting)
     }
 
     /// What the window covers: its length, or the model it is kept for.
