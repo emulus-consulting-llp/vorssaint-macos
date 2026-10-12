@@ -1,0 +1,120 @@
+{
+  "source_commit": "11bacaeb35028a5807f35137dc37feb480873ff4",
+  "local_change": "Scripts/agy-status.py executable bit enabled",
+  "included": [
+    {
+      "path": ".gitignore",
+      "sha256": "bf9c11d3f097b73d248601395aa25773ea1904db4f0634ec6e40c9b85a70e149",
+      "executable": false
+    },
+    {
+      "path": "Package.swift",
+      "sha256": "17688a0947ee8a5cb3b40cb34a6087defc8d590090d31e7cc1dcb25c836ff3d1",
+      "executable": false
+    },
+    {
+      "path": "README.md",
+      "sha256": "cf4a1afab1dba59a447532ae938d20d60a6b4a0c4c3702a10722c787e4afb2be",
+      "executable": false
+    },
+    {
+      "path": "Resources/Info.plist",
+      "sha256": "ca61c19326088673025cbdf79b006f3bd787e6bf7b4b3c3f0f73b0a4a412f6ea",
+      "executable": false
+    },
+    {
+      "path": "Scripts/agy-status.py",
+      "sha256": "9922ed058518da589b535f9a86026214f18f7a556aa0c70f2d0c4913e877748a",
+      "executable": true
+    },
+    {
+      "path": "Scripts/claude-statusline.py",
+      "sha256": "b5eea6a7a9dc7428a6e7c2c41aee5f994244328965b2df9c9335317bfa48d3eb",
+      "executable": true
+    },
+    {
+      "path": "Scripts/install.sh",
+      "sha256": "c956d6243b971cbdcab27afe1192d6499d641376fd77a3b1c40a3e827439477e",
+      "executable": true
+    },
+    {
+      "path": "Sources/AIUsageBar/AppDelegate.swift",
+      "sha256": "84d7e1175e171800b48bc0a4c604a7240273add7caf9f45e670cb4279af196c0",
+      "executable": false
+    },
+    {
+      "path": "Sources/AIUsageBar/Brand.swift",
+      "sha256": "e80f00d7596c2bc98937ca250dbda00f260436b83a38cd9c029a8cc38579dac5",
+      "executable": false
+    },
+    {
+      "path": "Sources/AIUsageBar/ClaudeSource.swift",
+      "sha256": "28ebf521bb14fa48af24370b853a76b2c5e1b67aba87c6896ae1644f0e5fdcfd",
+      "executable": false
+    },
+    {
+      "path": "Sources/AIUsageBar/Diagnostics.swift",
+      "sha256": "7693b76278c2ce088bbdc45b7e32388d2a67587bd49a1c319fdeb65e011d0356",
+      "executable": false
+    },
+    {
+      "path": "Sources/AIUsageBar/Formatting.swift",
+      "sha256": "fe159dc0db4b90e44fcb5fa93ebe86084bb4c7794eeb94b76e1db386b418af41",
+      "executable": false
+    },
+    {
+      "path": "Sources/AIUsageBar/GaugeRenderer.swift",
+      "sha256": "80853550c8f824815669d582353f82d436e9c0c97833b864e2d1558b6dcb650f",
+      "executable": false
+    },
+    {
+      "path": "Sources/AIUsageBar/GeminiSource.swift",
+      "sha256": "4b283fe81a418ef3a0318b08422214894b4f3b7f2e51704115e8dbc4fbc6fb26",
+      "executable": false
+    },
+    {
+      "path": "Sources/AIUsageBar/LocalTrust.swift",
+      "sha256": "4370dc8bbac75885a608b3cd1b86b1c48a081a72d5be48e6dfffaff0d7a6276c",
+      "executable": false
+    },
+    {
+      "path": "Sources/AIUsageBar/Models.swift",
+      "sha256": "d2400e1a07a43c58a04f023852ffa2c36b561788949f793a0160e3be58839ebb",
+      "executable": false
+    },
+    {
+      "path": "Sources/AIUsageBar/PanelView.swift",
+      "sha256": "c0204b6c3a9576759d58dc0a8d2b0e0283cfd40248dc3dee23eb7d902928176d",
+      "executable": false
+    },
+    {
+      "path": "Sources/AIUsageBar/Preview.swift",
+      "sha256": "30d2496ddc08cff111711c553bfb6a3c80c351f4fe83a564c362741dd601ec8e",
+      "executable": false
+    },
+    {
+      "path": "Sources/AIUsageBar/UsageRowView.swift",
+      "sha256": "6a7082732af25fa010f1b0b8ebfbf939b17f49990c0ddb9257ea78e3b713c80b",
+      "executable": false
+    },
+    {
+      "path": "Sources/AIUsageBar/main.swift",
+      "sha256": "b70e79d28fff72cd7355e8f2ef2f2d990072ee6799c2b4c1c42c3419f0bc1874",
+      "executable": false
+    }
+  ],
+  "excluded": [
+    "Resources/antigravity-white.png",
+    "Resources/antigravity.png",
+    "Resources/claude.png",
+    "Resources/gemini.png",
+    "Sources/AIUsageBar/LogoAssets.swift",
+    "design/Current.dc.html",
+    "design/Main.dc.html",
+    "design/MenuBarItem.dc.html",
+    "design/NativeMenu.dc.html",
+    "design/Popover.dc.html",
+    "design/ai-usage-bar-menu-redesign.html",
+    "design/canvas.json"
+  ]
+}
