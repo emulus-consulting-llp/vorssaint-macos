@@ -13,6 +13,8 @@ struct NotchStrings {
     let automatic: String
     let builtIn: String
     let mainDisplay: String
+    let followPointer: String
+    let allDisplays: String
     let hover: String
     let modules: String
     let events: String
@@ -27,6 +29,7 @@ struct NotchStrings {
     let dropHint: String
     let empty: String
     let volume: String
+    let inputSource: String
     let brightness: String
     let battery: String
     let onBattery: String
@@ -62,6 +65,17 @@ struct NotchStrings {
     let width: String
     let maximumHeight: String
     let sizeHint: String
+    let cameraFit: String
+    let height: String
+    let cameraFitHint: String
+    let hideMenuBarGap: String
+    let hideMenuBarGapHint: String
+    let withoutNotch: String
+    let capsuleShape: String
+    let notchShape: String
+    let capsuleFit: String
+    let fromTop: String
+    let capsuleFitHint: String
     let hapticFeedback: String
     let hapticHint: String
     let playbackPosition: String
@@ -76,6 +90,9 @@ struct NotchStrings {
     let sectionKeyboardHint: String
     let quickAccessLeft: String
     let quickAccessRight: String
+    let translucentBackground: String
+    let translucentBackgroundHint: String
+    let translucentBackgroundGlassHint: String
 }
 
 extension FeatureStrings {
@@ -111,6 +128,8 @@ extension NotchStrings {
         automatic: "Automatic",
         builtIn: "Built-in display",
         mainDisplay: "Main display",
+        followPointer: "Follow pointer",
+        allDisplays: "All displays",
         hover: "Open when the pointer rests on the Dynamic Island",
         modules: "What appears",
         events: "More options",
@@ -125,6 +144,7 @@ extension NotchStrings {
         dropHint: "Drop files here",
         empty: "Choose what appears in Dynamic Island settings.",
         volume: "Volume",
+        inputSource: "Input source",
         brightness: "Brightness",
         battery: "Battery",
         onBattery: "On battery",
@@ -160,6 +180,17 @@ extension NotchStrings {
         width: "Width",
         maximumHeight: "Maximum height",
         sizeHint: "Controls stay compact. Longer lists use up to this height.",
+        cameraFit: "Notch fit",
+        height: "Height",
+        cameraFitHint: "If an edge of the notch shows around Dynamic Island, adjust these values until it disappears.",
+        hideMenuBarGap: "Hide gap below notch",
+        hideMenuBarGapHint: "Extends Dynamic Island to the bottom of the menu bar to hide the thin strip below the notch.",
+        withoutNotch: "Displays without a notch",
+        capsuleShape: "Capsule",
+        notchShape: "Notch",
+        capsuleFit: "Capsule fit",
+        fromTop: "Distance from top",
+        capsuleFitHint: "Resizes the capsule and lowers it from the top of the screen on displays without a notch.",
         hapticFeedback: "Haptic feedback",
         hapticHint: "Gentle taps when opening, switching sections or adjusting timer minutes, on a compatible trackpad.",
         playbackPosition: "Playback position",
@@ -173,7 +204,10 @@ extension NotchStrings {
         searchSections: "Find a section",
         sectionKeyboardHint: "Use the arrow keys, then press Return",
         quickAccessLeft: "Left",
-        quickAccessRight: "Right"
+        quickAccessRight: "Right",
+        translucentBackground: "Translucent background",
+        translucentBackgroundHint: "When open, Dynamic Island blurs what is behind it with the system’s own material.",
+        translucentBackgroundGlassHint: "Liquid Glass is on, so Dynamic Island uses it instead."
     )
 
     static let ptBR = NotchStrings(
@@ -186,6 +220,8 @@ extension NotchStrings {
         automatic: "Automática",
         builtIn: "Tela integrada",
         mainDisplay: "Tela principal",
+        followPointer: "Seguir o ponteiro",
+        allDisplays: "Todas as telas",
         hover: "Abrir ao repousar o ponteiro sobre o Dynamic Island",
         modules: "O que aparece",
         events: "Mais opções",
@@ -200,6 +236,7 @@ extension NotchStrings {
         dropHint: "Solte arquivos aqui",
         empty: "Escolha o que aparece nos ajustes do Dynamic Island.",
         volume: "Volume",
+        inputSource: "Fonte de entrada",
         brightness: "Brilho",
         battery: "Bateria",
         onBattery: "Usando bateria",
@@ -235,6 +272,17 @@ extension NotchStrings {
         width: "Largura",
         maximumHeight: "Altura máxima",
         sizeHint: "A área de controles fica compacta. Listas maiores usam até esta altura.",
+        cameraFit: "Encaixe no notch",
+        height: "Altura",
+        cameraFitHint: "Se alguma borda do notch aparecer ao redor do Dynamic Island, ajuste estes valores até ela sumir.",
+        hideMenuBarGap: "Ocultar espaço abaixo do notch",
+        hideMenuBarGapHint: "Estende o Dynamic Island até a parte inferior da barra de menus para ocultar a faixa fina abaixo do notch.",
+        withoutNotch: "Telas sem notch",
+        capsuleShape: "Cápsula",
+        notchShape: "Notch",
+        capsuleFit: "Ajuste da cápsula",
+        fromTop: "Distância do topo",
+        capsuleFitHint: "Aumenta ou diminui a cápsula e a afasta do topo nas telas sem notch.",
         hapticFeedback: "Resposta tátil",
         hapticHint: "Toques suaves ao abrir, trocar de seção ou ajustar os minutos do temporizador, em um trackpad compatível.",
         playbackPosition: "Posição da reprodução",
@@ -248,7 +296,10 @@ extension NotchStrings {
         searchSections: "Encontrar uma seção",
         sectionKeyboardHint: "Use as setas e pressione Return",
         quickAccessLeft: "Esquerdo",
-        quickAccessRight: "Direito"
+        quickAccessRight: "Direito",
+        translucentBackground: "Fundo translúcido",
+        translucentBackgroundHint: "Quando aberta, a Dynamic Island desfoca o que está atrás dela com o material do próprio sistema.",
+        translucentBackgroundGlassHint: "O Liquid Glass está ativado, então a Dynamic Island o usa no lugar."
     )
 
     static let es = NotchStrings(
@@ -261,6 +312,8 @@ extension NotchStrings {
         automatic: "Automática",
         builtIn: "Pantalla integrada",
         mainDisplay: "Pantalla principal",
+        followPointer: "Seguir el puntero",
+        allDisplays: "Todas las pantallas",
         hover: "Abrir al dejar el puntero sobre el Dynamic Island",
         modules: "Qué aparece",
         events: "Más opciones",
@@ -275,6 +328,7 @@ extension NotchStrings {
         dropHint: "Suelta archivos aquí",
         empty: "Elige qué aparece en los ajustes de Dynamic Island.",
         volume: "Volumen",
+        inputSource: "Fuente de entrada",
         brightness: "Brillo",
         battery: "Batería",
         onBattery: "Usando batería",
@@ -310,6 +364,17 @@ extension NotchStrings {
         width: "Ancho",
         maximumHeight: "Altura máxima",
         sizeHint: "Los controles se mantienen compactos. Las listas largas usan hasta esta altura.",
+        cameraFit: "Ajuste al notch",
+        height: "Altura",
+        cameraFitHint: "Si se ve algún borde del notch alrededor del Dynamic Island, ajusta estos valores hasta que desaparezca.",
+        hideMenuBarGap: "Ocultar espacio bajo el notch",
+        hideMenuBarGapHint: "Extiende Dynamic Island hasta el borde inferior de la barra de menús para ocultar la franja fina bajo el notch.",
+        withoutNotch: "Pantallas sin notch",
+        capsuleShape: "Cápsula",
+        notchShape: "Notch",
+        capsuleFit: "Ajuste de la cápsula",
+        fromTop: "Distancia desde arriba",
+        capsuleFitHint: "Cambia el tamaño de la cápsula y la separa del borde superior en las pantallas sin notch.",
         hapticFeedback: "Respuesta háptica",
         hapticHint: "Toques suaves al abrir, cambiar de sección o ajustar los minutos del temporizador, en un trackpad compatible.",
         playbackPosition: "Posición de reproducción",
@@ -323,7 +388,10 @@ extension NotchStrings {
         searchSections: "Buscar una sección",
         sectionKeyboardHint: "Usa las flechas y pulsa Intro",
         quickAccessLeft: "Izquierdo",
-        quickAccessRight: "Derecho"
+        quickAccessRight: "Derecho",
+        translucentBackground: "Fondo translúcido",
+        translucentBackgroundHint: "Al abrirse, Dynamic Island desenfoca lo que hay detrás con el material del propio sistema.",
+        translucentBackgroundGlassHint: "Liquid Glass está activado, así que Dynamic Island lo usa en su lugar."
     )
 
     static let sk = NotchStrings(
@@ -336,6 +404,8 @@ extension NotchStrings {
         automatic: "Automaticky",
         builtIn: "Vstavaný displej",
         mainDisplay: "Hlavný displej",
+        followPointer: "Sledovať kurzor",
+        allDisplays: "Všetky displeje",
         hover: "Otvoriť, keď kurzor zostane na Dynamic Island",
         modules: "Čo sa zobrazuje",
         events: "Ďalšie možnosti",
@@ -350,13 +420,14 @@ extension NotchStrings {
         dropHint: "Súbory pretiahnite sem",
         empty: "Vyberte, čo sa má zobrazovať v nastaveniach Dynamic Island.",
         volume: "Hlasitosť",
+        inputSource: "Zdroj vstupu",
         brightness: "Jas",
         battery: "Batéria",
         onBattery: "Na batérii",
         charging: "Nabíja sa",
         charged: "Úplne nabitá",
         lowBattery: "Nízky stav batérie",
-        controls: "Ovládacie prvky",
+        controls: "Ovládanie",
         system: "Systém",
         disabled: "Zapnite príslušnú funkciu, aby ste ju tu mohli používať.",
         files: "Súbory",
@@ -385,6 +456,17 @@ extension NotchStrings {
         width: "Šírka",
         maximumHeight: "Maximálna výška",
         sizeHint: "Ovládacie prvky zostávajú kompaktné. Dlhšie zoznamy využijú až túto výšku.",
+        cameraFit: "Prispôsobenie výrezu",
+        height: "Výška",
+        cameraFitHint: "Ak je okolo Dynamic Island vidieť okraj výrezu, upravte tieto hodnoty, kým nezmizne.",
+        hideMenuBarGap: "Skryť medzeru pod výrezom",
+        hideMenuBarGapHint: "Predĺži Dynamic Island po spodný okraj lišty menu a skryje tenký pás pod výrezom.",
+        withoutNotch: "Displeje bez výrezu",
+        capsuleShape: "Kapsula",
+        notchShape: "Výrez",
+        capsuleFit: "Prispôsobenie kapsuly",
+        fromTop: "Odstup od vrchu",
+        capsuleFitHint: "Zmení veľkosť kapsuly a posunie ju nižšie od horného okraja na displejoch bez výrezu.",
         hapticFeedback: "Haptická odozva",
         hapticHint: "Jemné impulzy pri otváraní, prepínaní sekcií alebo úprave minút časovača na kompatibilnom trackpade.",
         playbackPosition: "Pozícia prehrávania",
@@ -398,7 +480,10 @@ extension NotchStrings {
         searchSections: "Nájsť sekciu",
         sectionKeyboardHint: "Použite šípky a stlačte Return",
         quickAccessLeft: "Vľavo",
-        quickAccessRight: "Vpravo"
+        quickAccessRight: "Vpravo",
+        translucentBackground: "Priesvitné pozadie",
+        translucentBackgroundHint: "Otvorený Dynamic Island rozmazáva obsah za sebou pomocou systémového materiálu.",
+        translucentBackgroundGlassHint: "Liquid Glass je zapnuté, preto ho Dynamic Island používa namiesto systémového materiálu."
     )
 
     static let de = NotchStrings(
@@ -411,6 +496,8 @@ extension NotchStrings {
         automatic: "Automatisch",
         builtIn: "Integrierter Bildschirm",
         mainDisplay: "Hauptbildschirm",
+        followPointer: "Zeiger folgen",
+        allDisplays: "Alle Bildschirme",
         hover: "Öffnen, wenn der Zeiger auf der Dynamic Island ruht",
         modules: "Angezeigte Inhalte",
         events: "Weitere Optionen",
@@ -425,6 +512,7 @@ extension NotchStrings {
         dropHint: "Dateien hier ablegen",
         empty: "Wähle die Inhalte in den Dynamic Island-Einstellungen.",
         volume: "Lautstärke",
+        inputSource: "Eingabequelle",
         brightness: "Helligkeit",
         battery: "Batterie",
         onBattery: "Batteriebetrieb",
@@ -460,6 +548,17 @@ extension NotchStrings {
         width: "Breite",
         maximumHeight: "Maximale Höhe",
         sizeHint: "Die Steuerung bleibt kompakt. Längere Listen nutzen bis zu dieser Höhe.",
+        cameraFit: "Anpassung an die Notch",
+        height: "Höhe",
+        cameraFitHint: "Wenn rund um die Dynamic Island ein Rand der Notch zu sehen ist, passe diese Werte an, bis er verschwindet.",
+        hideMenuBarGap: "Lücke unter der Notch ausblenden",
+        hideMenuBarGapHint: "Verlängert die Dynamic Island bis zum unteren Rand der Menüleiste, um den schmalen Streifen unter der Notch auszublenden.",
+        withoutNotch: "Bildschirme ohne Notch",
+        capsuleShape: "Kapsel",
+        notchShape: "Notch",
+        capsuleFit: "Anpassung der Kapsel",
+        fromTop: "Abstand von oben",
+        capsuleFitHint: "Ändert die Größe der Kapsel und rückt sie auf Bildschirmen ohne Notch vom oberen Rand ab.",
         hapticFeedback: "Haptisches Feedback",
         hapticHint: "Sanfte Impulse beim Öffnen, beim Bereichswechsel oder beim Einstellen der Timer-Minuten auf einem kompatiblen Trackpad.",
         playbackPosition: "Wiedergabeposition",
@@ -473,7 +572,10 @@ extension NotchStrings {
         searchSections: "Bereich finden",
         sectionKeyboardHint: "Mit den Pfeiltasten wählen, mit Eingabe öffnen",
         quickAccessLeft: "Links",
-        quickAccessRight: "Rechts"
+        quickAccessRight: "Rechts",
+        translucentBackground: "Durchscheinender Hintergrund",
+        translucentBackgroundHint: "Geöffnet zeichnet Dynamic Island den Hintergrund mit dem Material des Systems unscharf.",
+        translucentBackgroundGlassHint: "Liquid Glass ist aktiv, daher verwendet Dynamic Island stattdessen Liquid Glass."
     )
 
     static let fr = NotchStrings(
@@ -486,6 +588,8 @@ extension NotchStrings {
         automatic: "Automatique",
         builtIn: "Écran intégré",
         mainDisplay: "Écran principal",
+        followPointer: "Suivre le pointeur",
+        allDisplays: "Tous les écrans",
         hover: "Ouvrir lorsque le pointeur reste sur l’encoche",
         modules: "Contenu affiché",
         events: "Plus d’options",
@@ -500,6 +604,7 @@ extension NotchStrings {
         dropHint: "Déposez des fichiers ici",
         empty: "Choisissez le contenu dans les réglages de Dynamic Island.",
         volume: "Volume",
+        inputSource: "Source de saisie",
         brightness: "Luminosité",
         battery: "Batterie",
         onBattery: "Sur batterie",
@@ -535,6 +640,17 @@ extension NotchStrings {
         width: "Largeur",
         maximumHeight: "Hauteur maximale",
         sizeHint: "Les commandes restent compactes. Les longues listes utilisent au plus cette hauteur.",
+        cameraFit: "Ajustement à l’encoche",
+        height: "Hauteur",
+        cameraFitHint: "Si un bord de l’encoche apparaît autour de Dynamic Island, modifiez ces valeurs jusqu’à ce qu’il disparaisse.",
+        hideMenuBarGap: "Masquer l’espace sous l’encoche",
+        hideMenuBarGapHint: "Étend Dynamic Island jusqu’au bas de la barre des menus pour masquer la fine bande sous l’encoche.",
+        withoutNotch: "Écrans sans encoche",
+        capsuleShape: "Capsule",
+        notchShape: "Encoche",
+        capsuleFit: "Ajustement de la capsule",
+        fromTop: "Distance du haut",
+        capsuleFitHint: "Modifie la taille de la capsule et l’éloigne du haut de l’écran sur les écrans sans encoche.",
         hapticFeedback: "Retour haptique",
         hapticHint: "De légères impulsions à l’ouverture, au changement de rubrique ou au réglage des minutes du minuteur, sur un trackpad compatible.",
         playbackPosition: "Position de lecture",
@@ -548,7 +664,10 @@ extension NotchStrings {
         searchSections: "Rechercher une section",
         sectionKeyboardHint: "Utilisez les flèches, puis appuyez sur Retour",
         quickAccessLeft: "Gauche",
-        quickAccessRight: "Droite"
+        quickAccessRight: "Droite",
+        translucentBackground: "Fond translucide",
+        translucentBackgroundHint: "Ouverte, Dynamic Island floute ce qui se trouve derrière avec le matériau du système.",
+        translucentBackgroundGlassHint: "Liquid Glass est activé, Dynamic Island l’utilise donc à la place."
     )
 
     static let it = NotchStrings(
@@ -561,6 +680,8 @@ extension NotchStrings {
         automatic: "Automatico",
         builtIn: "Schermo integrato",
         mainDisplay: "Schermo principale",
+        followPointer: "Segui il puntatore",
+        allDisplays: "Tutti gli schermi",
         hover: "Apri quando il puntatore si ferma sul Dynamic Island",
         modules: "Contenuti visibili",
         events: "Altre opzioni",
@@ -575,6 +696,7 @@ extension NotchStrings {
         dropHint: "Rilascia i file qui",
         empty: "Scegli cosa mostrare nelle impostazioni di Dynamic Island.",
         volume: "Volume",
+        inputSource: "Sorgente di input",
         brightness: "Luminosità",
         battery: "Batteria",
         onBattery: "A batteria",
@@ -610,6 +732,17 @@ extension NotchStrings {
         width: "Larghezza",
         maximumHeight: "Altezza massima",
         sizeHint: "I controlli restano compatti. Gli elenchi lunghi usano al massimo questa altezza.",
+        cameraFit: "Adattamento al notch",
+        height: "Altezza",
+        cameraFitHint: "Se intorno al Dynamic Island si vede un bordo del notch, regola questi valori finché non scompare.",
+        hideMenuBarGap: "Nascondi lo spazio sotto il notch",
+        hideMenuBarGapHint: "Estende Dynamic Island fino al bordo inferiore della barra dei menu per nascondere la sottile striscia sotto il notch.",
+        withoutNotch: "Schermi senza notch",
+        capsuleShape: "Capsula",
+        notchShape: "Notch",
+        capsuleFit: "Adattamento della capsula",
+        fromTop: "Distanza dall’alto",
+        capsuleFitHint: "Cambia le dimensioni della capsula e la allontana dal bordo superiore sugli schermi senza notch.",
         hapticFeedback: "Feedback aptico",
         hapticHint: "Tocchi leggeri quando apri, cambi sezione o regoli i minuti del timer, su un trackpad compatibile.",
         playbackPosition: "Posizione di riproduzione",
@@ -623,7 +756,10 @@ extension NotchStrings {
         searchSections: "Trova una sezione",
         sectionKeyboardHint: "Usa le frecce, poi premi Invio",
         quickAccessLeft: "Sinistra",
-        quickAccessRight: "Destra"
+        quickAccessRight: "Destra",
+        translucentBackground: "Sfondo traslucido",
+        translucentBackgroundHint: "Quando è aperta, Dynamic Island sfoca ciò che si trova dietro con il materiale del sistema.",
+        translucentBackgroundGlassHint: "Liquid Glass è attivo, quindi Dynamic Island usa quello."
     )
 
     static let ru = NotchStrings(
@@ -636,6 +772,8 @@ extension NotchStrings {
         automatic: "Автоматически",
         builtIn: "Встроенный экран",
         mainDisplay: "Основной экран",
+        followPointer: "Следовать за указателем",
+        allDisplays: "Все экраны",
         hover: "Открывать при наведении указателя",
         modules: "Что показывать",
         events: "Дополнительные параметры",
@@ -650,6 +788,7 @@ extension NotchStrings {
         dropHint: "Перетащите файлы сюда",
         empty: "Выберите содержимое в настройках Dynamic Island.",
         volume: "Громкость",
+        inputSource: "Источник ввода",
         brightness: "Яркость",
         battery: "Аккумулятор",
         onBattery: "От аккумулятора",
@@ -685,6 +824,17 @@ extension NotchStrings {
         width: "Ширина",
         maximumHeight: "Максимальная высота",
         sizeHint: "Панель управления остаётся компактной. Длинные списки используют не более этой высоты.",
+        cameraFit: "Подгонка под вырез",
+        height: "Высота",
+        cameraFitHint: "Если вокруг Dynamic Island виден край выреза, настройте эти значения так, чтобы он исчез.",
+        hideMenuBarGap: "Скрыть зазор под вырезом",
+        hideMenuBarGapHint: "Продлевает Dynamic Island до нижнего края строки меню, скрывая тонкую полоску под вырезом.",
+        withoutNotch: "Экраны без выреза",
+        capsuleShape: "Капсула",
+        notchShape: "Вырез",
+        capsuleFit: "Подгонка капсулы",
+        fromTop: "Отступ сверху",
+        capsuleFitHint: "Меняет размер капсулы и опускает её от верхнего края на экранах без выреза.",
         hapticFeedback: "Тактильный отклик",
         hapticHint: "Лёгкий отклик при открытии, смене раздела или настройке минут таймера на совместимом трекпаде.",
         playbackPosition: "Позиция воспроизведения",
@@ -698,7 +848,10 @@ extension NotchStrings {
         searchSections: "Найти раздел",
         sectionKeyboardHint: "Выберите стрелками и нажмите Return",
         quickAccessLeft: "Слева",
-        quickAccessRight: "Справа"
+        quickAccessRight: "Справа",
+        translucentBackground: "Полупрозрачный фон",
+        translucentBackgroundHint: "Открытый Dynamic Island размывает то, что под ним, системным материалом.",
+        translucentBackgroundGlassHint: "Включено Liquid Glass, поэтому Dynamic Island использует его."
     )
 
     static let tr = NotchStrings(
@@ -711,6 +864,8 @@ extension NotchStrings {
         automatic: "Otomatik",
         builtIn: "Yerleşik ekran",
         mainDisplay: "Ana ekran",
+        followPointer: "İşaretçiyi takip et",
+        allDisplays: "Tüm ekranlar",
         hover: "İşaretçi çentikte durduğunda aç",
         modules: "Gösterilenler",
         events: "Daha fazla seçenek",
@@ -725,6 +880,7 @@ extension NotchStrings {
         dropHint: "Dosyaları buraya bırakın",
         empty: "Dynamic Island ayarlarında gösterilecek içeriği seçin.",
         volume: "Ses düzeyi",
+        inputSource: "Giriş kaynağı",
         brightness: "Parlaklık",
         battery: "Pil",
         onBattery: "Pil kullanılıyor",
@@ -760,6 +916,17 @@ extension NotchStrings {
         width: "Genişlik",
         maximumHeight: "En fazla yükseklik",
         sizeHint: "Denetimler kompakt kalır. Uzun listeler en fazla bu yüksekliği kullanır.",
+        cameraFit: "Çentiğe uyum",
+        height: "Yükseklik",
+        cameraFitHint: "Dynamic Island’ın çevresinde çentiğin bir kenarı görünüyorsa, kaybolana kadar bu değerleri ayarlayın.",
+        hideMenuBarGap: "Çentik altındaki boşluğu gizle",
+        hideMenuBarGapHint: "Çentiğin altındaki ince şeridi gizlemek için Dynamic Island’ı menü çubuğunun alt kenarına kadar uzatır.",
+        withoutNotch: "Çentiksiz ekranlar",
+        capsuleShape: "Kapsül",
+        notchShape: "Çentik",
+        capsuleFit: "Kapsül ayarı",
+        fromTop: "Üstten uzaklık",
+        capsuleFitHint: "Çentiksiz ekranlarda kapsülün boyutunu değiştirir ve onu üst kenardan aşağı indirir.",
         hapticFeedback: "Dokunsal geri bildirim",
         hapticHint: "Uyumlu bir izleme dörtgeninde açarken, bölüm değiştirirken veya zamanlayıcı dakikalarını ayarlarken hafif dokunuşlar.",
         playbackPosition: "Oynatma konumu",
@@ -773,7 +940,10 @@ extension NotchStrings {
         searchSections: "Bölüm bul",
         sectionKeyboardHint: "Ok tuşlarıyla seçin, Return ile açın",
         quickAccessLeft: "Sol",
-        quickAccessRight: "Sağ"
+        quickAccessRight: "Sağ",
+        translucentBackground: "Yarı saydam arka plan",
+        translucentBackgroundHint: "Dynamic Island açıkken arkasındakini sistemin kendi malzemesiyle bulanıklaştırır.",
+        translucentBackgroundGlassHint: "Liquid Glass açık olduğundan Dynamic Island onu kullanır."
     )
 
     static let ja = NotchStrings(
@@ -786,6 +956,8 @@ extension NotchStrings {
         automatic: "自動",
         builtIn: "内蔵ディスプレイ",
         mainDisplay: "メインディスプレイ",
+        followPointer: "ポインタに追従",
+        allDisplays: "すべてのディスプレイ",
         hover: "Dynamic Islandにポインタを置くと開く",
         modules: "表示する内容",
         events: "その他のオプション",
@@ -800,6 +972,7 @@ extension NotchStrings {
         dropHint: "ここにファイルをドロップ",
         empty: "Dynamic Islandの設定で表示する内容を選んでください。",
         volume: "音量",
+        inputSource: "入力ソース",
         brightness: "明るさ",
         battery: "バッテリー",
         onBattery: "バッテリー使用中",
@@ -835,6 +1008,17 @@ extension NotchStrings {
         width: "幅",
         maximumHeight: "最大の高さ",
         sizeHint: "コントロールはコンパクトに保たれ、長いリストはこの高さまで広がります。",
+        cameraFit: "ノッチに合わせる",
+        height: "高さ",
+        cameraFitHint: "Dynamic Islandの周りにノッチの縁が見える場合は、見えなくなるまでこれらの値を調整してください。",
+        hideMenuBarGap: "ノッチ下の隙間を隠す",
+        hideMenuBarGapHint: "Dynamic Islandをメニューバーの下端まで広げ、ノッチ下の細い帯を隠します。",
+        withoutNotch: "ノッチのないディスプレイ",
+        capsuleShape: "カプセル",
+        notchShape: "ノッチ",
+        capsuleFit: "カプセルの調整",
+        fromTop: "上端からの距離",
+        capsuleFitHint: "ノッチのないディスプレイで、カプセルの大きさを変え、上端から下げます。",
         hapticFeedback: "触覚フィードバック",
         hapticHint: "対応するトラックパッドで、開くとき、セクションの切り替え時、タイマーの分数を調整するときに軽い触覚を伝えます。",
         playbackPosition: "再生位置",
@@ -848,7 +1032,10 @@ extension NotchStrings {
         searchSections: "セクションを検索",
         sectionKeyboardHint: "矢印キーで選び、Returnキーで開きます",
         quickAccessLeft: "左",
-        quickAccessRight: "右"
+        quickAccessRight: "右",
+        translucentBackground: "半透明の背景",
+        translucentBackgroundHint: "開いた Dynamic Island の背後をシステムの素材でぼかします。",
+        translucentBackgroundGlassHint: "Liquid Glass がオンのため、Dynamic Island はそちらを使います。"
     )
 
     static let ko = NotchStrings(
@@ -861,6 +1048,8 @@ extension NotchStrings {
         automatic: "자동",
         builtIn: "내장 디스플레이",
         mainDisplay: "주 디스플레이",
+        followPointer: "포인터 따라가기",
+        allDisplays: "모든 디스플레이",
         hover: "Dynamic Island에 포인터를 두면 열기",
         modules: "표시할 항목",
         events: "추가 옵션",
@@ -875,6 +1064,7 @@ extension NotchStrings {
         dropHint: "여기에 파일을 놓으세요",
         empty: "Dynamic Island 설정에서 표시할 항목을 선택하세요.",
         volume: "음량",
+        inputSource: "입력 소스",
         brightness: "밝기",
         battery: "배터리",
         onBattery: "배터리 사용 중",
@@ -910,6 +1100,17 @@ extension NotchStrings {
         width: "너비",
         maximumHeight: "최대 높이",
         sizeHint: "제어 영역은 작게 유지되고 긴 목록은 이 높이까지 늘어납니다.",
+        cameraFit: "노치에 맞추기",
+        height: "높이",
+        cameraFitHint: "Dynamic Island 주위로 노치 가장자리가 보이면 보이지 않을 때까지 이 값을 조정하세요.",
+        hideMenuBarGap: "노치 아래 틈 숨기기",
+        hideMenuBarGapHint: "Dynamic Island를 메뉴 막대의 아래쪽 가장자리까지 확장하여 노치 아래의 얇은 띠를 숨깁니다.",
+        withoutNotch: "노치가 없는 디스플레이",
+        capsuleShape: "캡슐",
+        notchShape: "노치",
+        capsuleFit: "캡슐 조정",
+        fromTop: "위쪽 간격",
+        capsuleFitHint: "노치가 없는 디스플레이에서 캡슐의 크기를 바꾸고 위쪽 가장자리에서 아래로 내립니다.",
         hapticFeedback: "햅틱 피드백",
         hapticHint: "호환되는 트랙패드에서 열거나 섹션을 바꾸거나 타이머의 분을 조절할 때 가볍게 진동합니다.",
         playbackPosition: "재생 위치",
@@ -923,7 +1124,10 @@ extension NotchStrings {
         searchSections: "섹션 찾기",
         sectionKeyboardHint: "방향키로 선택하고 Return 키로 열기",
         quickAccessLeft: "왼쪽",
-        quickAccessRight: "오른쪽"
+        quickAccessRight: "오른쪽",
+        translucentBackground: "반투명 배경",
+        translucentBackgroundHint: "열린 Dynamic Island가 시스템 재질로 뒤쪽을 흐리게 표시합니다.",
+        translucentBackgroundGlassHint: "Liquid Glass가 켜져 있어 Dynamic Island가 대신 사용합니다."
     )
 
     static let zhHans = NotchStrings(
@@ -936,20 +1140,23 @@ extension NotchStrings {
         automatic: "自动",
         builtIn: "内建显示器",
         mainDisplay: "主显示器",
+        followPointer: "跟随指针",
+        allDisplays: "所有显示器",
         hover: "指针停留在Dynamic Island上时打开",
         modules: "显示内容",
         events: "更多选项",
-        clipboardActivity: "复制时通知",
+        clipboardActivity: "拷贝时通知",
         captureActivity: "在此显示截屏预览",
-        privacy: "复制的内容会保持私密，直到你打开历史记录。这些选项遵循原功能的设置。",
+        privacy: "拷贝的内容会保持私密，直到你打开历史记录。这些选项遵循原功能的设置。",
         open: "打开Dynamic Island",
         collapse: "收起",
         pin: "保持打开",
         unpin: "允许自动关闭",
-        panel: "打开应用面板",
+        panel: "打开 App 面板",
         dropHint: "将文件拖到这里",
         empty: "在Dynamic Island设置中选择要显示的内容。",
         volume: "音量",
+        inputSource: "输入法",
         brightness: "亮度",
         battery: "电池",
         onBattery: "使用电池",
@@ -973,7 +1180,7 @@ extension NotchStrings {
         dragReveal: "拖动时显示放置区域",
         captureControls: "在Dynamic Island中显示屏幕捕获控制",
         quickPanel: "在Dynamic Island中打开快捷面板",
-        appPanel: "在Dynamic Island中打开应用面板",
+        appPanel: "在Dynamic Island中打开 App 面板",
         idleContent: "闲置时",
         idleNone: "无",
         coverMenus: "显示在菜单上方",
@@ -985,6 +1192,17 @@ extension NotchStrings {
         width: "宽度",
         maximumHeight: "最大高度",
         sizeHint: "控制区域保持紧凑，较长的列表最多使用此高度。",
+        cameraFit: "贴合刘海",
+        height: "高度",
+        cameraFitHint: "如果Dynamic Island周围露出刘海的边缘，请调整这些数值直到它消失。",
+        hideMenuBarGap: "隐藏刘海下方的缝隙",
+        hideMenuBarGapHint: "将Dynamic Island延伸至菜单栏底部，隐藏刘海下方的细条。",
+        withoutNotch: "无刘海的显示器",
+        capsuleShape: "胶囊",
+        notchShape: "刘海",
+        capsuleFit: "调整胶囊",
+        fromTop: "距顶部",
+        capsuleFitHint: "在无刘海的显示器上调整胶囊的大小，并让它离开屏幕顶部。",
         hapticFeedback: "触觉反馈",
         hapticHint: "在兼容的触控板上，打开、切换区域或调整计时器分钟数时提供轻微触感。",
         playbackPosition: "播放进度",
@@ -998,7 +1216,10 @@ extension NotchStrings {
         searchSections: "查找分区",
         sectionKeyboardHint: "使用方向键选择，然后按回车键打开",
         quickAccessLeft: "左侧",
-        quickAccessRight: "右侧"
+        quickAccessRight: "右侧",
+        translucentBackground: "半透明背景",
+        translucentBackgroundHint: "展开的 Dynamic Island 会用系统材质模糊其背后的内容。",
+        translucentBackgroundGlassHint: "Liquid Glass 已开启，Dynamic Island 将改用 Liquid Glass。"
     )
 
     static let zhTW = NotchStrings(
@@ -1011,6 +1232,8 @@ extension NotchStrings {
         automatic: "自動",
         builtIn: "內建顯示器",
         mainDisplay: "主顯示器",
+        followPointer: "跟隨指標",
+        allDisplays: "所有顯示器",
         hover: "指標停留在Dynamic Island上時開啟",
         modules: "顯示內容",
         events: "更多選項",
@@ -1025,6 +1248,7 @@ extension NotchStrings {
         dropHint: "將檔案拖到這裡",
         empty: "在Dynamic Island設定中選擇要顯示的內容。",
         volume: "音量",
+        inputSource: "輸入來源",
         brightness: "亮度",
         battery: "電池",
         onBattery: "使用電池",
@@ -1060,6 +1284,17 @@ extension NotchStrings {
         width: "寬度",
         maximumHeight: "最大高度",
         sizeHint: "控制區域保持精簡，較長的列表最多使用此高度。",
+        cameraFit: "貼合瀏海",
+        height: "高度",
+        cameraFitHint: "如果Dynamic Island周圍露出瀏海的邊緣，請調整這些數值直到它消失。",
+        hideMenuBarGap: "隱藏瀏海下方的縫隙",
+        hideMenuBarGapHint: "將Dynamic Island延伸至選單列底部，隱藏瀏海下方的細條。",
+        withoutNotch: "無瀏海的顯示器",
+        capsuleShape: "膠囊",
+        notchShape: "瀏海",
+        capsuleFit: "調整膠囊",
+        fromTop: "距頂部",
+        capsuleFitHint: "在無瀏海的顯示器上調整膠囊的大小，並讓它離開螢幕頂部。",
         hapticFeedback: "觸覺回饋",
         hapticHint: "在相容的觸控式軌跡板上，開啟、切換區域或調整計時器分鐘數時提供輕微觸感。",
         playbackPosition: "播放進度",
@@ -1073,7 +1308,10 @@ extension NotchStrings {
         searchSections: "尋找區域",
         sectionKeyboardHint: "使用方向鍵選取，再按 Return 鍵開啟",
         quickAccessLeft: "左側",
-        quickAccessRight: "右側"
+        quickAccessRight: "右側",
+        translucentBackground: "半透明背景",
+        translucentBackgroundHint: "展開的 Dynamic Island 會以系統材質模糊背後的內容。",
+        translucentBackgroundGlassHint: "Liquid Glass 已開啟，Dynamic Island 會改用 Liquid Glass。"
     )
 
     static let zhHK = NotchStrings(
@@ -1086,6 +1324,8 @@ extension NotchStrings {
         automatic: "自動",
         builtIn: "內置顯示器",
         mainDisplay: "主顯示器",
+        followPointer: "跟隨指標",
+        allDisplays: "所有顯示器",
         hover: "指標停留在Dynamic Island上時開啟",
         modules: "顯示內容",
         events: "更多選項",
@@ -1100,6 +1340,7 @@ extension NotchStrings {
         dropHint: "將檔案拖到這裏",
         empty: "在Dynamic Island設定中選擇要顯示的內容。",
         volume: "音量",
+        inputSource: "輸入來源",
         brightness: "亮度",
         battery: "電池",
         onBattery: "使用電池",
@@ -1135,6 +1376,17 @@ extension NotchStrings {
         width: "寬度",
         maximumHeight: "最大高度",
         sizeHint: "控制區域保持精簡，較長的列表最多使用此高度。",
+        cameraFit: "貼合瀏海",
+        height: "高度",
+        cameraFitHint: "如果Dynamic Island周圍露出瀏海的邊緣，請調整這些數值直到它消失。",
+        hideMenuBarGap: "隱藏瀏海下方的縫隙",
+        hideMenuBarGapHint: "將Dynamic Island延伸至選單列底部，隱藏瀏海下方的細條。",
+        withoutNotch: "無瀏海的顯示器",
+        capsuleShape: "膠囊",
+        notchShape: "瀏海",
+        capsuleFit: "調整膠囊",
+        fromTop: "距頂部",
+        capsuleFitHint: "在無瀏海的顯示器上調整膠囊的大小，並讓它離開螢幕頂部。",
         hapticFeedback: "觸覺回饋",
         hapticHint: "在兼容的觸控板上，開啟、切換區域或調整計時器分鐘數時提供輕微觸感。",
         playbackPosition: "播放進度",
@@ -1148,7 +1400,10 @@ extension NotchStrings {
         searchSections: "尋找區域",
         sectionKeyboardHint: "使用方向鍵選取，再按 Return 鍵開啟",
         quickAccessLeft: "左側",
-        quickAccessRight: "右側"
+        quickAccessRight: "右側",
+        translucentBackground: "半透明背景",
+        translucentBackgroundHint: "展開的 Dynamic Island 會以系統材質模糊背後的內容。",
+        translucentBackgroundGlassHint: "Liquid Glass 已開啟，Dynamic Island 會改用 Liquid Glass。"
     )
 
     static let uk = NotchStrings(
@@ -1161,6 +1416,8 @@ extension NotchStrings {
         automatic: "Автоматично",
         builtIn: "Вбудований дисплей",
         mainDisplay: "Основний дисплей",
+        followPointer: "За вказівником",
+        allDisplays: "Усі дисплеї",
         hover: "Відкривати, коли вказівник зупиняється на Dynamic Island",
         modules: "Що показувати",
         events: "Більше опцій",
@@ -1175,13 +1432,14 @@ extension NotchStrings {
         dropHint: "Перетягніть файли сюди",
         empty: "Виберіть, що показувати, у налаштуваннях Dynamic Island.",
         volume: "Гучність",
+        inputSource: "Джерело введення",
         brightness: "Яскравість",
         battery: "Акумулятор",
         onBattery: "Від акумулятора",
         charging: "Заряджається",
         charged: "Повністю заряджено",
         lowBattery: "Низький заряд",
-        controls: "Елементи керування",
+        controls: "Керування",
         system: "Система",
         disabled: "Увімкніть відповідну функцію, щоб використовувати її тут.",
         files: "Файли",
@@ -1210,6 +1468,17 @@ extension NotchStrings {
         width: "Ширина",
         maximumHeight: "Максимальна висота",
         sizeHint: "Елементи керування залишаються компактними. Довші списки використовують щонайбільше цю висоту.",
+        cameraFit: "Підгонка під виріз",
+        height: "Висота",
+        cameraFitHint: "Якщо навколо Dynamic Island видно край вирізу, налаштуйте ці значення, щоб він зник.",
+        hideMenuBarGap: "Приховати проміжок під вирізом",
+        hideMenuBarGapHint: "Подовжує Dynamic Island до нижнього краю рядка меню, приховуючи тонку смужку під вирізом.",
+        withoutNotch: "Дисплеї без вирізу",
+        capsuleShape: "Капсула",
+        notchShape: "Виріз",
+        capsuleFit: "Підгонка капсули",
+        fromTop: "Відступ згори",
+        capsuleFitHint: "Змінює розмір капсули й опускає її від верхнього краю на дисплеях без вирізу.",
         hapticFeedback: "Тактильний відгук",
         hapticHint: "Легкі дотики при відкритті, перемиканні розділів або зміні хвилин таймера на сумісному трекпеді.",
         playbackPosition: "Позиція відтворення",
@@ -1223,7 +1492,10 @@ extension NotchStrings {
         searchSections: "Знайти розділ",
         sectionKeyboardHint: "Використовуйте стрілки, потім натисніть Return",
         quickAccessLeft: "Ліворуч",
-        quickAccessRight: "Праворуч"
+        quickAccessRight: "Праворуч",
+        translucentBackground: "Напівпрозоре тло",
+        translucentBackgroundHint: "Відкритий Dynamic Island розмиває вміст позаду за допомогою системного матеріалу.",
+        translucentBackgroundGlassHint: "Liquid Glass увімкнено, тому Dynamic Island використовує його."
     )
 
 }

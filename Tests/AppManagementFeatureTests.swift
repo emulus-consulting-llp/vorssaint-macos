@@ -421,6 +421,67 @@ enum AppManagementFeatureTests {
                && UninstallerSupport.verifiedBundleID("com.vorssaint.utils") == nil
                && UninstallerSupport.verifiedBundleID("com.apple.system") == nil,
                "malformed, protected and current app identifiers never enter uninstall paths")
+        let selectionFixture = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vorssaint-uninstaller-selection-\(UUID().uuidString)",
+                                    isDirectory: true)
+        try? FileManager.default.createDirectory(at: selectionFixture, withIntermediateDirectories: true)
+        func selectionBundle(_ name: String, bundleID: String) -> URL {
+            let app = selectionFixture.appendingPathComponent(name, isDirectory: true)
+            let info = app.appendingPathComponent("Contents/Info.plist")
+            try? FileManager.default.createDirectory(at: info.deletingLastPathComponent(),
+                                                     withIntermediateDirectories: true)
+            let plist: [String: Any] = ["CFBundleIdentifier": bundleID]
+            if let data = try? PropertyListSerialization.data(fromPropertyList: plist,
+                                                               format: .xml, options: 0) {
+                try? data.write(to: info)
+            }
+            return app
+        }
+        let editorApp = selectionBundle("Editor.app", bundleID: "com.vendor.editor")
+        suite.expect(UninstallerSupport.selection(for: URL(string: "https://example.com/App.app")!) == nil,
+               "a web address is refused before loading an app bundle")
+        let editorSelection = UninstallerSupport.selection(for: editorApp)
+        suite.expect(editorSelection?.bundleID == "com.vendor.editor"
+               && editorSelection?.url == editorApp.standardizedFileURL,
+               "a complete third party app bundle is accepted with its standardized path")
+        let appleEditorApp = selectionBundle("AppleEditor.app", bundleID: "com.apple.editor")
+        suite.expect(UninstallerSupport.selection(for: appleEditorApp) == nil,
+               "an Apple bundle identifier is refused before it can claim uninstall paths")
+        let aliasApp = selectionFixture.appendingPathComponent("Alias.app")
+        try? FileManager.default.createSymbolicLink(at: aliasApp, withDestinationURL: editorApp)
+        suite.expect(UninstallerSupport.selection(for: aliasApp) == nil,
+               "an app symlink is refused instead of selecting its destination")
+        let bareApp = selectionFixture.appendingPathComponent("Bare.app", isDirectory: true)
+        try? FileManager.default.createDirectory(at: bareApp, withIntermediateDirectories: true)
+        suite.expect(UninstallerSupport.selection(for: bareApp) == nil,
+               "a bundle without Info.plist is refused before a scan starts")
+        // An iPhone or iPad app on a Mac carries its Info.plist at the top of
+        // the bundle and has no Contents folder for the uninstaller to remove.
+        let wrappedApp = selectionFixture.appendingPathComponent("Wrapped.app", isDirectory: true)
+        try? FileManager.default.createDirectory(at: wrappedApp, withIntermediateDirectories: true)
+        if let data = try? PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleIdentifier": "com.vendor.wrapped"], format: .xml, options: 0) {
+            try? data.write(to: wrappedApp.appendingPathComponent("Info.plist"))
+        }
+        suite.expect(Bundle(url: wrappedApp)?.bundleIdentifier == "com.vendor.wrapped"
+               && UninstallerSupport.selection(for: wrappedApp) == nil,
+               "a bundle with a valid identifier but no Contents/Info.plist is refused")
+        let listedApps = [editorApp, appleEditorApp, bareApp, wrappedApp].map {
+            InstalledApps.InstalledApp(id: $0.standardizedFileURL.path, name: $0.lastPathComponent,
+                                      bundleID: nil, url: $0, isSystem: false)
+        }
+        suite.expect(UninstallerSupport.acceptedApplicationIDs(listedApps)
+                == [editorApp.standardizedFileURL.path],
+               "the command bar's uninstall list keeps only the apps the uninstaller accepts")
+        try? FileManager.default.removeItem(at: selectionFixture)
+        for path in ["Sources/Vorssaint/UI/Uninstall/UninstallerView.swift",
+                     "Sources/Vorssaint/UI/MenuPanel/PanelUninstallerView.swift"] {
+            let pickerSource = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
+            suite.expect(pickerSource.contains("UninstallerSupport.offeredApplications()"),
+                   "\(path) offers only the apps the shared selection checks accept")
+            suite.expect(pickerSource.contains("return uninstaller.select(appURL: app)"),
+                   "\(path) springs a refused drop back instead of accepting it")
+        }
         let uninstallAppURL = URL(fileURLWithPath: "/Applications/Editor.app")
         suite.expect(UninstallerSupport.isNestedBundle(
                    URL(fileURLWithPath: "/Applications/Editor.app/Contents/Library/LoginItems/Background.app"),
@@ -783,7 +844,7 @@ enum AppManagementFeatureTests {
                "a removal builds the known-application roster only when it may claim shared data")
         let finishHomebrewBody = sourceBody(of: appUninstallerSource,
                                             from: "private func finishRemovalAfterHomebrew",
-                                            to: "private static func trashViaFinder")
+                                            to: "private static func removeCommandBarState")
         suite.expect(!finishHomebrewBody.isEmpty,
                "the Homebrew follow-up removal source reads back for its shape check")
         // Package completion must preserve ownership of the remaining choices
@@ -801,9 +862,42 @@ enum AppManagementFeatureTests {
                 && removeSelectedBody.contains("stubborn.append(item)")
                 && removeSelectedBody.contains("freed += item.size"),
                "a path is counted freed only when its absence is confirmed, not on a bare fileExists miss")
+        // Copy detection belongs to the background cleanup shared by both
+        // removal paths, and is needed only for bundle-wide preferences.
+        let cleanupBody = sourceBody(of: appUninstallerSource,
+                                     from: "private static func removeCommandBarState",
+                                     to: "private static func trashViaFinder")
+        let storedStateCheck = cleanupBody.range(of: "hasStoredApplicationState(")
+        let leavesMainThread = cleanupBody.range(of: "DispatchQueue.global(")
+        let absenceCheck = cleanupBody.range(of: "isConfirmedAbsent")
+        let folderWalk = cleanupBody.range(of: "installedApplications(")
+        suite.expect(storedStateCheck != nil && leavesMainThread != nil
+                && storedStateCheck!.upperBound < leavesMainThread!.lowerBound
+                && cleanupBody.contains("bundleIDs.isEmpty ? []"),
+               "a removal scans for another copy only when the app has shared Command Bar state")
+        suite.expect(absenceCheck != nil && folderWalk != nil
+                && absenceCheck!.upperBound < folderWalk!.lowerBound,
+               "a removed app's shortcut is freed only after its absence is confirmed")
+        // The bar also lists apps Spotlight finds in the home folder, such as
+        // a second copy in Downloads, and that copy answers to the same row.
+        suite.expect(cleanupBody.contains(
+                    "spotlightPaths: CommandBarService.spotlightApplicationPaths()"),
+               "a copy the Command Bar finds through Spotlight keeps the removed app's shortcut")
+        suite.expect(removeSelectedBody.components(separatedBy: "Self.removeCommandBarState(").count == 2
+                && finishHomebrewBody.components(separatedBy: "Self.removeCommandBarState(").count == 2,
+               "both the Trash and the Homebrew removals schedule the same cleanup exactly once")
         suite.expect(CleanerSupport.bundleIDCandidate(fromEntryName: "com.vendor.editor.prefPane")
                 == "com.vendor.editor",
                "preference panes map to their owning bundle identifier")
+        suite.expect(CleanerSupport.bundleIDCandidate(fromEntryName: "im.riot.app.plist") == "im.riot.app"
+               && CleanerSupport.bundleIDCandidate(fromEntryName: "com.vendor.Service.plist") == "com.vendor.Service"
+               && CleanerSupport.bundleIDCandidate(fromEntryName: "com.vendor.Dictionary.savedState")
+                == "com.vendor.Dictionary"
+               && CleanerSupport.bundleIDCandidate(fromEntryName: "io.app.plist") == "io.app",
+               "only the entry's own extension is removed, not an identifier component spelled like one")
+        suite.expect(CleanerSupport.bundleIDCandidate(fromEntryName: "com.vendor.editor.app") == "com.vendor.editor"
+               && CleanerSupport.bundleIDCandidate(fromEntryName: "com.vendor.editor.PLIST") == "com.vendor.editor",
+               "a single payload extension still unwraps to its owner in any letter case")
         suite.expect(CleanerSupport.bundleIDCandidate(fromEntryName: "app-0.0.409") == nil
                && CleanerSupport.bundleIDCandidate(fromEntryName: "0.0.409") == nil
                && CleanerSupport.bundleIDCandidate(fromEntryName: "1.57.0") == nil
@@ -851,6 +945,17 @@ enum AppManagementFeatureTests {
                    CleanerSupport.isProtectedBundleID($0)
                },
                "embedded updaters and crash reporters can never be junk owners")
+        suite.expect(CleanerSupport.isProtectedBundleID("io.sentry.Native")
+               && CleanerSupport.isProtectedBundleID("ORG.SPARKLE-PROJECT.Sparkle")
+               && CleanerSupport.isProtectedBundleID("com.google.Keystone.Agent"),
+               "anything inside a shared infrastructure domain stays protected, in any letter case")
+        suite.expect(!CleanerSupport.isProtectedBundleID("com.segmentfault.reader")
+               && !CleanerSupport.isProtectedBundleID("com.amplitudestudios.Humankind")
+               && !CleanerSupport.isProtectedBundleID("io.sentrybox.Mac")
+               && !CleanerSupport.isProtectedBundleID("org.swiftbar.app")
+               && UninstallerSupport.verifiedBundleID("com.amplitudestudios.Humankind")
+                == "com.amplitudestudios.Humankind",
+               "another vendor whose name merely starts like a shared domain is an ordinary app")
         suite.expect(CleanerSupport.bundleIDCandidate(fromEntryName: "systemgroup.com.apple.icloud.sharedsettings.plist")
                == "com.apple.icloud.sharedsettings",
                "systemgroup wrappers unwrap to the real owner")
@@ -959,6 +1064,13 @@ enum AppManagementFeatureTests {
                    "BundleProgram": "Contents/MacOS/relative",
                ]) == ["/Applications/Gone.app/Contents/MacOS/agent", "/usr/local/bin/gone-tool"],
                "launch plists yield their absolute executables and skip relative ones")
+        let bareCommand = CleanerSupport.executablePaths(inLaunchPlist: [
+                   "Program": "rsync", "ProgramArguments": ["sh", "-c", "rsync -a ~/a /Volumes/b"],
+               ])
+        suite.expect(bareCommand.isEmpty
+               && !CleanerSupport.launchPlistIsRemovableOrphan(label: "local.backup", executables: bareCommand,
+                                                               executableExists: { _ in false }),
+               "an agent that runs a bare command from launchd's search path is never offered as an orphan")
         suite.expect(CleanerSupport.launchPlistIsRemovableOrphan(label: "com.vendor.editor.launchdaemon",
                                                            executables: ["/Applications/Gone.app/x"],
                                                            executableExists: { _ in false }),

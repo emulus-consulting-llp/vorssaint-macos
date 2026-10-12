@@ -184,7 +184,7 @@ struct UpdateSupportIntroView: View {
             }
             .padding(16)
         }
-        .frame(width: 560, height: 400)
+        .frame(width: 560, height: 420)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 }
@@ -192,6 +192,14 @@ struct UpdateSupportIntroView: View {
 private struct UpdateSupportContent: View {
     @ObservedObject private var l10n = L10n.shared
     @Environment(\.openURL) private var openURL
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var donateThanksText: String {
+        let thanks = l10n.s.donateThanks
+        return colorScheme == .dark
+            ? thanks.replacingOccurrences(of: "🖤", with: "🤍")
+            : thanks
+    }
 
     var body: some View {
         VStack(spacing: 13) {
@@ -225,9 +233,24 @@ private struct UpdateSupportContent: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
 
-            Text(l10n.s.donateThanks)
+            Text(donateThanksText)
                 .font(.caption)
                 .foregroundStyle(.tertiary)
+
+            Button {
+                openURL(AppInfo.repositoryURL)
+            } label: {
+                Label(l10n.s.supportIntroStarHint, systemImage: "star")
+                    .font(.caption)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: 440)
+            .padding(.top, 4)
+            .help(l10n.s.supportIntroStarButton)
+            .accessibilityLabel(l10n.s.supportIntroStarButton)
         }
     }
 }

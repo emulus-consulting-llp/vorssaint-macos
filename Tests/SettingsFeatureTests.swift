@@ -27,15 +27,22 @@ enum SettingsFeatureTests {
         // MARK: Settings backup
 
         let backupKeys = SettingsBackupSupport.exportKeys()
+        let marginBackup = SettingsBackupSupport.payload(appVersion: "test") { key in
+            key == DefaultsKey.windowLayoutMarginPercent ? 12.0 : nil
+        }
+        suite.expect(SettingsBackupSupport.sanitizedSettings(from: marginBackup)?[
+            DefaultsKey.windowLayoutMarginPercent] as? Double == 12,
+            "custom maximize margin survives a settings backup round trip")
         suite.expect(backupKeys.contains(DefaultsKey.switcherEnabled)
                 && backupKeys.contains(DefaultsKey.menuBarCPU)
                 && backupKeys.contains(DefaultsKey.language)
                 && backupKeys.contains(DefaultsKey.appVolumes)
+                && !backupKeys.contains(DefaultsKey.mixerUniversalOutputDevice)
                 && backupKeys.contains(DefaultsKey.mixerShowFinder)
                 && backupKeys.contains(DefaultsKey.mixerHideInactiveApps)
                 && backupKeys.contains(DefaultsKey.keepAwakeActiveIcon)
                 && backupKeys.contains(AppFeature.dockPreview.availabilityKey),
-               "backup carries preferences, menu bar pins, Keep Awake appearance, language and hub availability")
+               "backup carries preferences, menu bar pins, Keep Awake appearance, language and hub availability, never a session's all-apps output")
         suite.expect(backupKeys.contains(DefaultsKey.launchAtLoginWanted),
                "the launch at login choice travels with the settings backup")
         let islandKeys: Set<String> = [
@@ -111,6 +118,20 @@ enum SettingsFeatureTests {
         suite.expect(SettingsBackupSupport.sanitizedSettings(from: mainDisplayBackup)?[DefaultsKey.notchDisplay] as? String
                     == NotchDisplay.main.rawValue,
                "a backup keeps the main display choice")
+        let pointerDisplayBackup: [String: Any] = [
+            SettingsBackupSupport.formatVersionKey: SettingsBackupSupport.formatVersion,
+            SettingsBackupSupport.settingsKey: [DefaultsKey.notchDisplay: NotchDisplay.pointer.rawValue],
+        ]
+        suite.expect(SettingsBackupSupport.sanitizedSettings(from: pointerDisplayBackup)?[DefaultsKey.notchDisplay] as? String
+                    == NotchDisplay.pointer.rawValue,
+               "a backup keeps the choice to follow the pointer, which belongs to no single Mac")
+        let allDisplaysBackup: [String: Any] = [
+            SettingsBackupSupport.formatVersionKey: SettingsBackupSupport.formatVersion,
+            SettingsBackupSupport.settingsKey: [DefaultsKey.notchDisplay: NotchDisplay.all.rawValue],
+        ]
+        suite.expect(SettingsBackupSupport.sanitizedSettings(from: allDisplaysBackup)?[DefaultsKey.notchDisplay] as? String
+                    == NotchDisplay.all.rawValue,
+               "a backup keeps the choice of every display")
         suite.expect(backupKeys.contains(DefaultsKey.cleaningModeKeepScreenVisible),
                "the cleaning mode keep screen visible choice travels with the settings backup")
         suite.expect(backupKeys.contains(DefaultsKey.appearance),
@@ -148,16 +169,17 @@ enum SettingsFeatureTests {
         suite.expect(backupKeys.contains(DefaultsKey.windowGestureEnabled)
                 && backupKeys.contains(DefaultsKey.windowEdgeSnapEnabled)
                 && backupKeys.contains(DefaultsKey.windowEdgeSnapDisabledZones)
+                && backupKeys.contains(DefaultsKey.windowEdgeSnapZoneActions)
                 && backupKeys.contains(DefaultsKey.windowGestureModifiers)
                 && backupKeys.contains(DefaultsKey.windowGestureRaiseWindow)
                 && backupKeys.contains(DefaultsKey.windowLayoutShortcutPreviousDisplay)
                 && backupKeys.contains(DefaultsKey.windowLayoutShortcutMarginMaximize),
                "window layout choices travel with the settings backup")
         suite.expect(backupKeys.contains(DefaultsKey.screenshotFreeze)
-                && backupKeys.contains(DefaultsKey.screenshotSaveFolder)
                 && backupKeys.contains(DefaultsKey.screenshotFullScreenShortcutEnabled)
                 && backupKeys.contains(DefaultsKey.screenshotFullScreenShortcut)
                 && backupKeys.contains(DefaultsKey.screenshotShowLastRegion)
+                && backupKeys.contains(DefaultsKey.screenshotHighlightWindows)
                 && backupKeys.contains(DefaultsKey.screenshotToolOrder)
                 && backupKeys.contains(DefaultsKey.screenshotToolShortcutsEnabled)
                 && backupKeys.contains(DefaultsKey.screenshotLastCaptureShortcutEnabled)
@@ -173,6 +195,8 @@ enum SettingsFeatureTests {
                 && backupKeys.contains(DefaultsKey.screenshotLoupeSteppedZoomByDefault)
                 && backupKeys.contains(DefaultsKey.panelUtilityScreenshot),
                "screenshot preferences travel with the settings backup")
+        suite.expect(!backupKeys.contains(DefaultsKey.screenshotSaveFolder),
+               "the chosen screenshot save folder does not travel with the settings backup, being authority on one Mac")
         suite.expect(!backupKeys.contains(DefaultsKey.screenshotLoupeLastZoom),
                "the magnifier's last session zoom stays on its own Mac")
         suite.expect(backupKeys.contains(DefaultsKey.whatsAppDownloadsEnabled)
@@ -230,10 +254,21 @@ enum SettingsFeatureTests {
         suite.expect(backupKeys.contains(DefaultsKey.mouseAccelerationDisabled)
                 && backupKeys.contains(DefaultsKey.panelControlMouseAcceleration),
                "mouse acceleration preferences travel with the settings backup")
+        suite.expect(backupKeys.contains(DefaultsKey.spacesOrderEnabled)
+                && backupKeys.contains(DefaultsKey.panelControlSpacesOrder)
+                && !backupKeys.contains(DefaultsKey.spacesOrderRestore)
+                && !backupKeys.contains(DefaultsKey.spacesOrderRestartPending),
+               "fixed Space order preferences travel with the settings backup, but never the restore state")
+        suite.expect(backupKeys.contains(DefaultsKey.linearScrollEnabled)
+                && backupKeys.contains(DefaultsKey.linearScrollLines)
+                && backupKeys.contains(DefaultsKey.panelControlLinearScroll),
+               "linear scrolling preferences travel with the settings backup")
         suite.expect(MouseExceptionScope.allCases.allSatisfy { backupKeys.contains($0.defaultsKey) },
                "the apps each mouse feature leaves alone travel with the settings backup")
         suite.expect(backupKeys.contains(DefaultsKey.clipboardHistoryIgnoredApps),
                "the apps the clipboard history skips travel with the settings backup")
+        suite.expect(backupKeys.contains(DefaultsKey.clipboardHistoryLayout),
+               "the clipboard history layout travels with the settings backup")
         suite.expect(!backupKeys.contains(DefaultsKey.clipboardHistoryWindowWidth)
                 && !backupKeys.contains(DefaultsKey.clipboardHistoryWindowHeight),
                "the clipboard window size stays on the display where it was chosen")
@@ -262,6 +297,9 @@ enum SettingsFeatureTests {
         suite.expect(backupKeys.contains(DefaultsKey.windowMaximizeExcludedApps)
                 && (Defaults.registeredDefaults[DefaultsKey.windowMaximizeExcludedApps] as? [String]) == [],
                "the green button exception list starts empty and travels with the settings backup")
+        suite.expect(backupKeys.contains(DefaultsKey.switcherPreviewExcludedApps)
+                && (Defaults.registeredDefaults[DefaultsKey.switcherPreviewExcludedApps] as? [String]) == [],
+               "the switcher's own paused apps start empty and travel with the settings backup")
         suite.expect(backupKeys.contains(DefaultsKey.panelShowToggles)
                 && backupKeys.contains(DefaultsKey.panelToggleOrder)
                 && backupKeys.contains(DefaultsKey.panelToggleDarkMode)
@@ -292,10 +330,13 @@ enum SettingsFeatureTests {
                 && !backupKeys.contains(DefaultsKey.cleanerLastAutoRun)
                 && !backupKeys.contains(DefaultsKey.statusItemPlacementGeneration)
                 && !backupKeys.contains(DefaultsKey.displaysSwitchedOff)
+                && !backupKeys.contains(DefaultsKey.displaysSwitchedOffFingerprints)
                 && !backupKeys.contains(DefaultsKey.screenshotSharingDeveloperEndpoint),
                "backup never carries private content, live state or machine markers")
         suite.expect(Defaults.registeredDefaults[DefaultsKey.displaysSwitchedOff] == nil,
                "a display switched off is a repair note for this machine, not a setting")
+        suite.expect(Defaults.registeredDefaults[DefaultsKey.displaysSwitchedOffFingerprints] == nil,
+               "saved display identities stay in machine recovery state, not registered preferences")
         suite.expect(Defaults.registeredDefaults[DefaultsKey.startupDidNotFinish] == nil,
                "a start that did not finish is a note for this machine, not a setting")
 

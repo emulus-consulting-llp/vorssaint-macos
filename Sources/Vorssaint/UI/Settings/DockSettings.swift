@@ -13,6 +13,8 @@ struct DockSettings: View {
     @AppStorage(DefaultsKey.dockPreviewEnabled) private var dockPreviewEnabled = false
     @AppStorage(DefaultsKey.dockPreviewCurrentSpaceOnly) private var dockPreviewCurrentSpaceOnly = false
     @AppStorage(DefaultsKey.dockPreviewBackgroundOpacity) private var dockPreviewBackgroundOpacity = 1.0
+    @AppStorage(DefaultsKey.liquidGlassEnabled) private var liquidGlassEnabled = false
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @AppStorage(DefaultsKey.dockPreviewOpenDelay) private var dockPreviewOpenDelay = DockPreviewSupport.defaultOpenDelayMilliseconds
     @AppStorage(DefaultsKey.dockPreviewQuitAppOnClose) private var dockPreviewQuitAppOnClose = false
     @AppStorage(DefaultsKey.dockPreviewOrderByCreation) private var dockPreviewOrderByCreation = false
@@ -21,6 +23,7 @@ struct DockSettings: View {
     @AppStorage(DefaultsKey.dockClickMinimize) private var dockClickMinimize = false
     @AppStorage(DefaultsKey.dockClickHide) private var dockClickHide = false
     @AppStorage(DefaultsKey.dockClickCycleWindows) private var dockClickCycleWindows = false
+    @AppStorage(DefaultsKey.spacesOrderEnabled) private var spacesOrderEnabled = false
 
     private var pages: SettingsPageStrings { FeatureStrings.settingsPages(l10n.language) }
     private var dockPreviewEngaged: Bool { dockPreviewEnabled && AppFeature.dockPreview.isAvailable }
@@ -45,8 +48,13 @@ struct DockSettings: View {
                     dockClickCard
                         .settingsSectionAnchor(.dockClick, cornerRadius: 16)
                 }
+                if AppFeature.spacesOrder.isAvailable {
+                    spacesOrderCard
+                        .settingsSectionAnchor(.spacesOrder, cornerRadius: 16)
+                }
                 if AppFeature.dockPreview.isAvailable {
-                    WindowPreviewsCard(sizeKey: DefaultsKey.previewSize)
+                    WindowPreviewsCard(sizeKey: DefaultsKey.previewSize,
+                                       excludedAppsKey: DefaultsKey.windowPreviewExcludedApps)
                 }
                 if needsAccessibility, !permissions.accessibility {
                     SettingsCard(title: l10n.s.permissionRequired) {
@@ -100,7 +108,9 @@ struct DockSettings: View {
                     }
                 }
                 SettingsRow(symbol: "circle.lefthalf.filled", title: l10n.s.dockPreviewBackgroundOpacity,
-                            caption: l10n.s.dockPreviewBackgroundOpacityCaption) {
+                            caption: dockPreviewBackgroundIsGlass
+                                ? l10n.s.dockPreviewBackgroundOpacityGlassCaption
+                                : l10n.s.dockPreviewBackgroundOpacityCaption) {
                     HStack(spacing: 8) {
                         Slider(value: dockPreviewBackgroundOpacityBinding,
                                in: DockPreviewSupport.backgroundOpacityRange,
@@ -111,6 +121,7 @@ struct DockSettings: View {
                             .foregroundStyle(.secondary)
                             .frame(width: 44, alignment: .trailing)
                     }
+                    .disabled(dockPreviewBackgroundIsGlass)
                 }
                 SettingsRow(symbol: "xmark.circle", title: l10n.s.dockPreviewQuitAppOnClose,
                             caption: l10n.s.dockPreviewQuitAppOnCloseCaption) {
@@ -169,6 +180,19 @@ struct DockSettings: View {
         }
     }
 
+    private var spacesOrderCard: some View {
+        SettingsCard {
+            SettingsRow(symbol: AppFeature.spacesOrder.symbolName, title: l10n.s.spacesOrderName,
+                        caption: l10n.s.spacesOrderCaption) {
+                Toggle(l10n.s.spacesOrderName, isOn: $spacesOrderEnabled)
+                    .labelsHidden()
+                    .onChange(of: spacesOrderEnabled) { _, _ in
+                        SpacesOrderHold.shared.syncWithPreferences()
+                    }
+            }
+        }
+    }
+
     // MARK: - State
 
     /// Dock Preview and every Dock click action work through Accessibility;
@@ -187,6 +211,12 @@ struct DockSettings: View {
         default:
             return l10n.s.dockPreviewEnableCaption
         }
+    }
+
+    /// The slider only fades the classic material. Liquid Glass takes its
+    /// transparency from System Settings, so the slider has nothing to change.
+    private var dockPreviewBackgroundIsGlass: Bool {
+        HUDBackdrop.drawsLiquidGlass(enabled: liquidGlassEnabled, reduceTransparency: reduceTransparency)
     }
 
     private var dockPreviewBackgroundOpacityBinding: Binding<Double> {

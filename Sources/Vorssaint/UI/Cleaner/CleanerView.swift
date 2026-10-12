@@ -339,7 +339,7 @@ struct CleanerView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(11)
-        .frame(maxWidth: 380)
+        .frame(maxWidth: 380, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.primary.opacity(0.05)))
     }
 
@@ -590,50 +590,23 @@ struct CleanerView: View {
     @ViewBuilder
     private var scheduleDetails: some View {
         if scheduleFrequency != .off {
-                HStack(spacing: 6) {
-                    if scheduleFrequency == .weekly {
-                        Picker("", selection: $scheduleWeekday) {
-                            ForEach(1...7, id: \.self) { day in
-                                Text(Calendar.current.standaloneWeekdaySymbols[day - 1].capitalized)
-                                    .tag(day)
-                            }
-                        }
-                        .labelsHidden()
-                        .fixedSize()
+                // The menu panel is too narrow for the weekday beside the time
+                // in most languages, and a row wider than the panel shifts all
+                // of its content past the left edge, so the weekday then takes
+                // its own row.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 6) {
+                        weekdayPicker
+                        timePickers
+                        Spacer()
                     }
-                    if Self.uses12HourClock {
-                        Picker("", selection: scheduleHour12Binding) {
-                            ForEach(1...12, id: \.self) { hour in
-                                Text(String(hour)).tag(hour)
-                            }
-                        }
-                        .labelsHidden()
-                        .fixedSize()
-                    } else {
-                        Picker("", selection: $scheduleHour) {
-                            ForEach(0..<24, id: \.self) { hour in
-                                Text(String(hour)).tag(hour)
-                            }
-                        }
-                        .labelsHidden()
-                        .fixedSize()
-                    }
-                    Picker("", selection: $scheduleMinute) {
-                        ForEach(minuteChoices, id: \.self) { minute in
-                            Text(String(format: ":%02d", minute)).tag(minute)
+                    VStack(alignment: .leading, spacing: 6) {
+                        weekdayPicker
+                        HStack(spacing: 6) {
+                            timePickers
+                            Spacer()
                         }
                     }
-                    .labelsHidden()
-                    .fixedSize()
-                    if Self.uses12HourClock {
-                        Picker("", selection: schedulePMBinding) {
-                            Text(Self.dayPeriodSymbols.am).tag(false)
-                            Text(Self.dayPeriodSymbols.pm).tag(true)
-                        }
-                        .labelsHidden()
-                        .fixedSize()
-                    }
-                    Spacer()
                 }
                 Toggle(l10n.s.cleanerScheduleNotifyToggle, isOn: $scheduleNotify)
                     .toggleStyle(.checkbox)
@@ -661,6 +634,57 @@ struct CleanerView: View {
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
+        }
+    }
+
+    @ViewBuilder
+    private var weekdayPicker: some View {
+        if scheduleFrequency == .weekly {
+            Picker("", selection: $scheduleWeekday) {
+                ForEach(1...7, id: \.self) { day in
+                    Text(Calendar.current.standaloneWeekdaySymbols[day - 1].capitalized)
+                        .tag(day)
+                }
+            }
+            .labelsHidden()
+            .fixedSize()
+        }
+    }
+
+    /// The hour, the minutes and, on a twelve hour clock, AM or PM.
+    @ViewBuilder
+    private var timePickers: some View {
+        if Self.uses12HourClock {
+            Picker("", selection: scheduleHour12Binding) {
+                ForEach(1...12, id: \.self) { hour in
+                    Text(String(hour)).tag(hour)
+                }
+            }
+            .labelsHidden()
+            .fixedSize()
+        } else {
+            Picker("", selection: $scheduleHour) {
+                ForEach(0..<24, id: \.self) { hour in
+                    Text(String(hour)).tag(hour)
+                }
+            }
+            .labelsHidden()
+            .fixedSize()
+        }
+        Picker("", selection: $scheduleMinute) {
+            ForEach(minuteChoices, id: \.self) { minute in
+                Text(String(format: ":%02d", minute)).tag(minute)
+            }
+        }
+        .labelsHidden()
+        .fixedSize()
+        if Self.uses12HourClock {
+            Picker("", selection: schedulePMBinding) {
+                Text(Self.dayPeriodSymbols.am).tag(false)
+                Text(Self.dayPeriodSymbols.pm).tag(true)
+            }
+            .labelsHidden()
+            .fixedSize()
         }
     }
 
@@ -756,19 +780,27 @@ struct CleanerView: View {
                 }
                 .frame(maxWidth: .infinity)
             } else {
-                List {
-                    section(l10n.s.cleanerSafeSection, groups: DisplayGroup.allCases.filter(\.isSafe))
-                    section(l10n.s.cleanerOptionalSection, groups: DisplayGroup.allCases.filter { !$0.isSafe })
+                if compact {
+                    // The island, menu panel and launcher already scroll.
+                    // Keep the rows and Clean button in that same scroll area.
+                    VStack(alignment: .leading, spacing: 16) {
+                        resultsGroups
+                    }
+                    .padding(12)
+                } else {
+                    List { resultsGroups }
+                        .listStyle(.inset)
                 }
-                .listStyle(.inset)
-                // Inside the floating panel the list must not paint its own
-                // opaque backdrop over the panel's translucent material.
-                .scrollContentBackground(compact ? .hidden : .automatic)
-                .frame(minHeight: compact ? 280 : 0)
                 Divider()
                 resultsFooter
             }
         }
+    }
+
+    @ViewBuilder
+    private var resultsGroups: some View {
+        section(l10n.s.cleanerSafeSection, groups: DisplayGroup.allCases.filter(\.isSafe))
+        section(l10n.s.cleanerOptionalSection, groups: DisplayGroup.allCases.filter { !$0.isSafe })
     }
 
     private var resultsHeader: some View {
@@ -792,8 +824,19 @@ struct CleanerView: View {
     private func section(_ header: String, groups: [DisplayGroup]) -> some View {
         let visible = groups.filter { !items(for: $0).isEmpty }
         if !visible.isEmpty {
-            Section(header) {
-                ForEach(visible) { group in groupRow(group) }
+            if compact {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(header).font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    ForEach(visible) { group in
+                        groupRow(group)
+                        Divider()
+                    }
+                }
+            } else {
+                Section(header) {
+                    ForEach(visible) { group in groupRow(group) }
+                }
             }
         }
     }

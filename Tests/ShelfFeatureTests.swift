@@ -18,6 +18,58 @@ enum ShelfFeatureTests {
             suite.expect(actual == expected, "\(label): got \(actual), expected \(expected)",
                          file: file, line: line)
         }
+        // MARK: Shelf shortcut Finder selection
+
+        do {
+            let file = URL(fileURLWithPath: "/tmp/a.txt")
+            let other = URL(fileURLWithPath: "/tmp/b.txt")
+
+            var requests = ShelfShortcutSelectionRequests()
+            let ticket = requests.begin()
+            suite.expect(requests.resolve(ticket, urls: [file], stillAllowed: true) == .add([file]),
+                   "a reply for the current shortcut press adds its Finder selection")
+            suite.expect(requests.resolve(ticket, urls: [file], stillAllowed: true) == .discard,
+                   "a reply is settled only once")
+
+            requests = ShelfShortcutSelectionRequests()
+            let empty = requests.begin()
+            suite.expect(requests.resolve(empty, urls: [], stillAllowed: true) == .toggle,
+                   "an empty Finder selection keeps the ordinary shortcut toggle")
+
+            requests = ShelfShortcutSelectionRequests()
+            let first = requests.begin()
+            let second = requests.begin()
+            suite.expect(requests.resolve(first, urls: [file], stillAllowed: true) == .discard,
+                   "a delayed reply from an earlier press is dropped once the shortcut was pressed again")
+            suite.expect(requests.resolve(second, urls: [other], stillAllowed: true) == .add([other]),
+                   "the latest press still receives its reply after an older one arrived late")
+
+            requests = ShelfShortcutSelectionRequests()
+            let beforeReset = requests.begin()
+            requests.invalidate()
+            suite.expect(!requests.hasPending
+                    && requests.resolve(beforeReset, urls: [file], stillAllowed: true) == .discard,
+                   "clearing or turning off the Shelf drops a reply that arrives afterwards")
+            suite.expect(requests.resolve(beforeReset, urls: [], stillAllowed: true) == .discard,
+                   "a dropped request cannot toggle the Shelf later either")
+
+            requests = ShelfShortcutSelectionRequests()
+            let disabled = requests.begin()
+            suite.expect(requests.resolve(disabled, urls: [file], stillAllowed: false) == .discard,
+                   "a reply is rechecked against the feature state when it arrives")
+            suite.expect(!requests.hasPending, "a rejected reply does not stay pending")
+
+            requests = ShelfShortcutSelectionRequests()
+            let again = requests.begin()
+            suite.expect(requests.resolve(again, urls: [file], stillAllowed: true,
+                                          shelvedPaths: [file.standardizedFileURL.path]) == .toggle,
+                   "pressing the shortcut again on files already shelved toggles the shelf instead of adding them twice")
+            let mixed = requests.begin()
+            suite.expect(requests.resolve(mixed, urls: [file, other], stillAllowed: true,
+                                          shelvedPaths: [file.standardizedFileURL.path]) == .add([other]),
+                   "only the selected files the shelf does not hold yet are added")
+        }
+
         // MARK: Shelf persistence
 
         suite.expect(ShelfSelectionSupport.rangeSelectionIDs(
@@ -82,25 +134,35 @@ enum ShelfFeatureTests {
                "a drag holding a pinned shelf item only offers a copy outside the app")
 
         suite.expect(!ShelfInteractionSupport.isContentDrag(
-            baselineChangeCount: 5, changeCount: 5, beganInDock: false,
+            gestureChangeCount: 5, restingChangeCount: 5, changeCount: 5, beganInDock: false,
             hasDroppableContent: { true }),
                "moving a window past retained pasteboard content is not a content drag")
         suite.expect(!ShelfInteractionSupport.isContentDrag(
-            baselineChangeCount: 5, changeCount: 6, beganInDock: false,
+            gestureChangeCount: 5, restingChangeCount: 5, changeCount: 6, beganInDock: false,
             hasDroppableContent: { false }),
                "a pasteboard bump without droppable content is not a content drag")
         suite.expect(ShelfInteractionSupport.isContentDrag(
-            baselineChangeCount: 5, changeCount: 6, beganInDock: false,
+            gestureChangeCount: 5, restingChangeCount: 5, changeCount: 6, beganInDock: false,
             hasDroppableContent: { true }),
                "content published during the gesture is a content drag")
         suite.expect(ShelfInteractionSupport.isContentDrag(
-            baselineChangeCount: 5, changeCount: 5, beganInDock: true,
+            gestureChangeCount: 6, restingChangeCount: 5, changeCount: 6, beganInDock: true,
             hasDroppableContent: { true }),
-               "dock stacks may publish the drag contents before the mouse-down")
+               "a Dock stack drag published before the mouse-down was seen is a content drag")
         suite.expect(!ShelfInteractionSupport.isContentDrag(
-            baselineChangeCount: 5, changeCount: 5, beganInDock: false,
-            hasDroppableContent: { fatalError("droppable check must stay lazy") }),
-               "an unchanged pasteboard outside the Dock skips the content inspection")
+            gestureChangeCount: 5, restingChangeCount: 5, changeCount: 5, beganInDock: true,
+            hasDroppableContent: { true }),
+               "holding or dragging a Dock icon over retained content is not a content drag (#2212)")
+        suite.expect(!ShelfInteractionSupport.isContentDrag(
+            gestureChangeCount: 6, restingChangeCount: 5, changeCount: 6, beganInDock: false,
+            hasDroppableContent: { true }),
+               "outside the Dock, content published before the gesture began is not a content drag")
+        for beganInDock in [false, true] {
+            suite.expect(!ShelfInteractionSupport.isContentDrag(
+                gestureChangeCount: 5, restingChangeCount: 5, changeCount: 5, beganInDock: beganInDock,
+                hasDroppableContent: { fatalError("droppable check must stay lazy") }),
+                   "an unchanged pasteboard skips the content inspection (Dock: \(beganInDock))")
+        }
 
         // MARK: Shelf pasteboard / file promises (#1554)
         // Promises must activate the shelf before a concrete file exists.
@@ -139,6 +201,57 @@ enum ShelfFeatureTests {
                "unrelated pasteboard types do not activate the shelf")
         ShelfFilePromiseTests.run(suite)
         ShelfDropRoutingTests.run(suite)
+
+        // MARK: Shelf and the screenshot editor (#2812)
+
+        do {
+            let fm = FileManager.default
+            let root = fm.temporaryDirectory.appendingPathComponent("vorss-generated-tests-\(UUID())")
+            defer { try? fm.removeItem(at: root) }
+            let store = root.appendingPathComponent("store")
+            let data = Data("edited capture".utf8)
+            let name = "Screenshot 2026-10-07 at 21.47.24.png"
+            let first = ShelfPersistenceSupport.writeGeneratedFile(data, named: name, in: store, container: root)
+            let second = ShelfPersistenceSupport.writeGeneratedFile(data, named: name, in: store, container: root)
+            suite.expect(first?.lastPathComponent == name && second?.lastPathComponent == name
+                    && first != second && first.flatMap { try? Data(contentsOf: $0) } == data,
+                   "a generated file keeps its name, and another with the same name gets its own folder")
+            if let first {
+                let folder = first.deletingLastPathComponent()
+                let fileMode = (try? fm.attributesOfItem(atPath: first.path))?[.posixPermissions] as? Int
+                let folderMode = (try? fm.attributesOfItem(atPath: folder.path))?[.posixPermissions] as? Int
+                suite.expect(folder.deletingLastPathComponent().standardizedFileURL.path == store.standardizedFileURL.path
+                        && UUID(uuidString: folder.lastPathComponent) != nil
+                        && fileMode == 0o600 && folderMode == 0o700,
+                       "a generated file is owner-only, in a private folder right inside the store")
+                suite.expect(ShelfPersistenceSupport.containsKeptFile(under: folder.path, keptPaths: [first.path]),
+                       "the startup sweep keeps a generated file's folder while its item is on the shelf")
+                ShelfFilePromiseTransfer.discard([first], in: store)
+                suite.expect(!fm.fileExists(atPath: folder.path),
+                       "discarding a generated file takes its folder with it")
+            }
+            for unsafe in ["", ".", "..", "../outside.png", "nested/name.png"] {
+                suite.expect(ShelfPersistenceSupport.writeGeneratedFile(data, named: unsafe, in: store,
+                                                                        container: root) == nil,
+                       "a generated file named \(unsafe.debugDescription) is refused")
+            }
+            let unwritableName = String(repeating: "x", count: 300) + ".png"
+            suite.expect(ShelfPersistenceSupport.writeGeneratedFile(data, named: unwritableName, in: store,
+                                                                    container: root) == nil,
+                   "a file-system write failure refuses the generated file")
+            let storeEntries = (try? fm.contentsOfDirectory(atPath: store.path)) ?? []
+            suite.expect(storeEntries.count == 1,
+                   "refused names and failed writes leave no folder behind, found \(storeEntries.count) entries")
+        }
+        let shotURL = URL(fileURLWithPath: "/tmp/shot.png")
+        suite.expect(ShelfInteractionSupport.editableImage(in: [shotURL]) == shotURL
+                && ShelfInteractionSupport.editableImage(in: [URL(fileURLWithPath: "/tmp/PHOTO.JPG")]) != nil,
+               "a single image on the shelf can open in the screenshot editor")
+        suite.expect(ShelfInteractionSupport.editableImage(in: [shotURL, URL(fileURLWithPath: "/tmp/b.png")]) == nil
+                && ShelfInteractionSupport.editableImage(in: []) == nil
+                && ShelfInteractionSupport.editableImage(in: [URL(fileURLWithPath: "/tmp/notes.txt")]) == nil
+                && ShelfInteractionSupport.editableImage(in: [URL(fileURLWithPath: "/tmp/clip.mov")]) == nil,
+               "the editor is offered for exactly one image, never for several items or other files")
 
         // MARK: Shelf reveal
 

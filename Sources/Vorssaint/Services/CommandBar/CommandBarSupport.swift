@@ -256,6 +256,16 @@ enum CommandBarSearch {
         return false
     }
 
+    /// Where a color typed on its own goes in the list. It leads, unless a row
+    /// already there spells what was typed: "#1234" is also an issue number
+    /// and "#cafe" a channel someone copied, and Return must still reach
+    /// those. The swatch then sits right under the first row.
+    static func colorPreviewIndex(rowTitles: [String], query: String) -> Int {
+        let typed = normalized(query)
+        guard !typed.isEmpty else { return 0 }
+        return rowTitles.contains { normalized($0).contains(typed) } ? 1 : 0
+    }
+
     static func matches(title: String, keywords: String = "", query: String) -> Bool {
         score(title: title, keywords: keywords, query: query) != nil
     }
@@ -324,6 +334,51 @@ enum CommandBarSearch {
                 return $0.position < $1.position
             }
             .map(\.index)
+    }
+
+    /// A feature's own rows keep one order whatever their titles score: its
+    /// main command, then its presets, then its Settings page. Ranked by title
+    /// alone, the page named exactly like the feature led, the presets that
+    /// start with its name came next, and the switch the person came for was
+    /// last. The rows trade places among the slots they already hold, so
+    /// nothing else moves, and a row chosen on purpose, by a name or a habit,
+    /// keeps its place while the rest still keep their order around it.
+    /// A feature's generated switch counts as its main command, and a page
+    /// of its own, named as the feature is, as its Settings page.
+    /// `id` and `priority` read a candidate by its index.
+    static func featureOrdered(_ ranked: [Int], id: (Int) -> String, priority: (Int) -> Int) -> [Int] {
+        // The feature a row belongs to, and its turn among that feature's rows.
+        func role(_ id: String) -> (feature: Substring, turn: Int)? {
+            if id.hasPrefix("settings.feature.") { return (id.dropFirst("settings.feature.".count), 2) }
+            if id.hasPrefix("settings.") {
+                let page = id.dropFirst("settings.".count)
+                return page.contains(".") ? nil : (page, 2)
+            }
+            if id.hasPrefix("toggle.") {
+                let name = id.dropFirst("toggle.".count)
+                return (name.split(separator: ".", maxSplits: 1).first ?? name, 0)
+            }
+            guard id.hasPrefix("action.") else { return nil }
+            let name = id.dropFirst("action.".count)
+            guard let dot = name.firstIndex(of: ".") else { return (name, 0) }
+            return (name[..<dot], 1)
+        }
+        var slots: [Substring: [Int]] = [:]
+        for (position, index) in ranked.enumerated() where priority(index) == 0 {
+            guard let role = role(id(index)) else { continue }
+            slots[role.feature, default: []].append(position)
+        }
+        var result = ranked
+        for positions in slots.values where positions.count > 1 {
+            let members = positions.map { ranked[$0] }
+            // Rows with the same turn keep the order they ranked in.
+            let ordered = members.enumerated().sorted {
+                let first = role(id($0.element))?.turn ?? 0, second = role(id($1.element))?.turn ?? 0
+                return first != second ? first < second : $0.offset < $1.offset
+            }.map(\.element)
+            for (slot, index) in zip(positions, ordered) { result[slot] = index }
+        }
+        return result
     }
 
     /// Broad text quality is compared before passive signals such as usage and
@@ -548,7 +603,7 @@ extension CommandBarSearch {
 }
 
 /// How often and how recently one command ran. Query habits reuse it behind
-/// keyed digests; what the person typed is never written anywhere.
+/// keyed digests; the typed query itself is never written anywhere.
 struct CommandBarUse: Codable, Equatable {
     var count: Int
     var lastUsed: Double
@@ -652,9 +707,8 @@ enum CommandBarUsage {
     }
 }
 
-/// Which result won after a typed query during this process. Both the keyed
-/// query digests and their random key stay in memory; no Keychain access or
-/// persistent query history is needed.
+/// Which result won after a typed query. Only bounded, keyed query digests and
+/// row identities are saved locally; the typed query is never stored verbatim.
 enum CommandBarQueryHabits {
     typealias Store = [String: [String: CommandBarUse]]
 
@@ -740,18 +794,8 @@ enum CommandBarQueryHabits {
         }
     }
 
-    static func prepare(_ query: String) -> PreparedQuery {
-        var cache = PreparationCache()
-        return prepare(query, cache: &cache)
-    }
-
-    static func prepare(_ query: String,
-                        cache: inout PreparationCache) -> PreparedQuery {
-        prepare(query, key: sessionKey, cache: &cache)
-    }
-
-    /// Injectable so the storage and ranking rules stay deterministic in
-    /// tests without reading or writing the person's Keychain.
+    /// Injectable so storage and ranking stay deterministic in tests without
+    /// touching the person's preferences.
     static func prepare(_ query: String, key: Data) -> PreparedQuery {
         var cache = PreparationCache()
         return prepare(query, key: key, cache: &cache)
@@ -821,12 +865,9 @@ enum CommandBarQueryHabits {
         choices.values.map(\.lastUsed).max() ?? 0
     }
 
-    private static let sessionKey = SymmetricKey(size: .bits256).withUnsafeBytes { Data($0) }
-
 }
 
-/// Query choices for this process only. Opening the panel keeps this memory;
-/// quitting the app discards it.
+/// Decoded query choices, kept in memory while ranking and saved on changes.
 struct CommandBarQueryHabitStoreCache {
     private(set) var store: CommandBarQueryHabits.Store = [:]
 
@@ -853,10 +894,17 @@ struct CommandBarQueryHabitStoreCache {
 }
 
 enum CommandBarLearning {
-    /// Old digests cannot be reused with a process-local key. Do not touch the
-    /// abandoned Keychain item: even migration must never request access.
-    static func discardLegacyQueryHabits(in defaults: UserDefaults = .standard) {
+    /// Keep one random key on this Mac so saved query digests mean the same
+    /// thing after a relaunch. A missing or damaged key invalidates old digests.
+    static func installationKey(in defaults: UserDefaults = .standard) -> Data {
+        if let raw = defaults.string(forKey: DefaultsKey.commandBarQueryHabitKey),
+           let key = Data(base64Encoded: raw), key.count == 32 {
+            return key
+        }
+        let key = SymmetricKey(size: .bits256).withUnsafeBytes { Data($0) }
         defaults.removeObject(forKey: DefaultsKey.commandBarQueryHabits)
+        defaults.set(key.base64EncodedString(), forKey: DefaultsKey.commandBarQueryHabitKey)
+        return key
     }
 
     static func forgetAll(in defaults: UserDefaults = .standard) {

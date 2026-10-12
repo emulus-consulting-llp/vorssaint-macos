@@ -3,10 +3,10 @@
 
 import SwiftUI
 
-/// The Features hub. One switch per feature, grouped in plain language: off
-/// means the feature disappears from the whole app (Settings, panel, menu
-/// bar, shortcuts) and costs nothing; its configuration is kept for its
-/// return. The Permissions tab is the transparency portal: what each system
+/// The Features hub. Install or uninstall each feature, grouped in plain
+/// language: uninstalling removes it from the whole app (Settings, panel,
+/// menu bar, shortcuts) and stops its work; its configuration is kept for
+/// its return. The Permissions tab is the transparency portal: what each system
 /// permission does, which features use it right now, and a gentle nudge when
 /// one is granted with nothing using it.
 struct FeatureHubSettings: View {
@@ -27,6 +27,14 @@ struct FeatureHubSettings: View {
     @State private var expandedGroups = Set(FeatureGroup.allCases)
     @State private var islandExtensionsExpanded = true
     @State private var presetsExpanded = true
+    /// Installed switches never once turned on, read when the page appears
+    /// and after every install change rather than on every redraw.
+    @State private var neverUsed: [AppFeature] = []
+    /// The batch just uninstalled from that card, kept for its Undo.
+    @State private var recentlyUninstalled: [AppFeature] = []
+
+    /// Below this, the offer would be more to read than it saves.
+    private static let neverUsedMinimum = 3
 
     private enum Tab { case features, permissions }
 
@@ -35,14 +43,22 @@ struct FeatureHubSettings: View {
     var body: some View {
         ScrollViewReader { proxy in
             content
-                .onAppear { revealPendingFeatureTarget(using: proxy) }
+                .onAppear {
+                    refreshNeverUsed()
+                    revealPendingFeatureTarget(using: proxy)
+                }
                 .onChange(of: router.requestID) { _, _ in revealPendingFeatureTarget(using: proxy) }
+                .onChange(of: features.revision) { _, _ in refreshNeverUsed() }
         }
     }
 
     private var content: some View {
+        // The lazy stack has to be the scroll view's own content (issue
+        // #2270). Nested in a plain stack, it resized that stack each time a
+        // card came into view: scrolling stalled for up to a second, and the
+        // layout could keep redoing itself until Settings froze.
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            LazyVStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(hub.pageTitle).font(.title2.bold())
                     Text(tab == .features ? hub.intro : hub.permissionsIntro)
@@ -63,12 +79,11 @@ struct FeatureHubSettings: View {
                 }
                 if tab == .features {
                     summaryCard
+                    neverUsedCard
                     dynamicIslandCard
                     presetsCard
-                    LazyVStack(spacing: 20) {
-                        ForEach(FeatureGroup.allCases.filter { $0 != .dynamicIsland }, id: \.self) { group in
-                            groupCard(group)
-                        }
+                    ForEach(FeatureGroup.allCases.filter { $0 != .dynamicIsland }, id: \.self) { group in
+                        groupCard(group)
                     }
                     VStack(alignment: .leading, spacing: 4) {
                         Text(hub.footerNote)
@@ -194,6 +209,80 @@ struct FeatureHubSettings: View {
                 .disabled(features.availableCount == 0)
             }
             InstalledShareBar(installed: features.availableCount, total: features.installableCount)
+        }
+    }
+
+    /// Installed switches that were never once turned on, offered as one
+    /// batch. People come to this page to manage the app, so the offer waits
+    /// here instead of interrupting anywhere else. Keep ends it for these
+    /// features, and Undo puts back exactly what left.
+    @ViewBuilder
+    private var neverUsedCard: some View {
+        if !recentlyUninstalled.isEmpty {
+            SettingsCard {
+                HStack(spacing: 12) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.green)
+                        .accessibilityHidden(true)
+                    Text(hub.footerNote)
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 12)
+                    Button(l10n.s.menuUndo, action: undoNeverUsedUninstall)
+                }
+            }
+        } else if neverUsed.count >= Self.neverUsedMinimum {
+            SettingsCard(title: hub.neverUsedTitle) {
+                Text(String(format: hub.neverUsedMessageFormat,
+                            neverUsed.map { $0.hubTitle(l10n.s, hub: hub) }.joined(separator: ", ")))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    Spacer(minLength: 0)
+                    Button(hub.neverUsedKeep, action: keepNeverUsed)
+                    Button(hub.neverUsedUninstall, action: uninstallNeverUsed)
+                }
+            }
+        }
+    }
+
+    private func refreshNeverUsed() {
+        neverUsed = FeatureRuntime.shared.neverSwitchedOnFeatures()
+    }
+
+    private func uninstallNeverUsed() {
+        // Read again at the click: a switch turned on in the panel since the
+        // page appeared takes its feature out of the batch.
+        let stillUnused = Set(FeatureRuntime.shared.neverSwitchedOnFeatures())
+        let batch = neverUsed.filter(stillUnused.contains)
+        guard !batch.isEmpty else {
+            refreshNeverUsed()
+            return
+        }
+        recentlyUninstalled = batch
+        withAnimation(.easeOut(duration: 0.22)) {
+            FeatureRuntime.shared.setAvailable(batch, false)
+        }
+    }
+
+    /// Changing one's mind is also an answer to the offer, so the features
+    /// that come back are kept and never offered again. None of them was
+    /// ever on, and the reinstall leaves their switches off too.
+    private func undoNeverUsedUninstall() {
+        let batch = recentlyUninstalled
+        recentlyUninstalled = []
+        FeatureRuntime.shared.keep(batch)
+        withAnimation(.easeOut(duration: 0.22)) {
+            FeatureRuntime.shared.setAvailable(batch, true, enablingFirstInstalls: false)
+        }
+    }
+
+    private func keepNeverUsed() {
+        FeatureRuntime.shared.keep(neverUsed)
+        withAnimation(.easeOut(duration: 0.22)) {
+            refreshNeverUsed()
         }
     }
 
@@ -414,7 +503,7 @@ private struct PresetCard: View {
 // MARK: - Feature row
 
 /// Icon, name and one line about the feature; small icons for the
-/// permissions it can use and what it keeps alive; and the install switch.
+/// permissions it can use and what it keeps alive; and the install action.
 /// An installed feature with a page of its own opens it from the row.
 private struct FeatureHubRow: View {
     @ObservedObject private var l10n = L10n.shared
@@ -439,7 +528,7 @@ private struct FeatureHubRow: View {
 
     /// Set only while this Mac cannot run the feature and it is not yet
     /// installed, so an install that predates the check keeps an ordinary
-    /// row with its settings and the switch reachable.
+    /// row with its settings and Uninstall reachable.
     private var unsupportedReason: String? { feature.installBlockedReason }
 
     private var accessibilityTitle: String {
@@ -470,19 +559,6 @@ private struct FeatureHubRow: View {
         }
     }
 
-    /// The switch reads availability itself, so it only moves once the
-    /// runtime has flipped; the Dynamic Island asks about its extensions
-    /// before leaving, and the switch springs back if that is cancelled.
-    private var installBinding: Binding<Bool> {
-        Binding(get: { installed }, set: { wanted in
-            if !wanted, !installedExtensions.isEmpty {
-                confirmingExtensions = true
-            } else {
-                flip(to: wanted)
-            }
-        })
-    }
-
     var body: some View {
         HStack(spacing: 12) {
             if opensSettings {
@@ -505,7 +581,7 @@ private struct FeatureHubRow: View {
                     .saturation(unsupportedReason == nil ? 1 : 0)
             }
             metadata
-            installSwitch
+            installAction
         }
         .padding(.vertical, 7)
         .padding(.horizontal, 8)
@@ -605,22 +681,31 @@ private struct FeatureHubRow: View {
     }
 
     @ViewBuilder
-    private var installSwitch: some View {
-        let toggle = Toggle(accessibilityTitle, isOn: installBinding)
-            .labelsHidden()
-            .toggleStyle(.switch)
+    private var installAction: some View {
+        if installed {
+            Button(hub.uninstallButton) {
+                if installedExtensions.isEmpty { flip(to: false) } else { confirmingExtensions = true }
+            }
+            .buttonStyle(.bordered)
             .controlSize(.small)
-        if let reason = unsupportedReason {
+            .accessibilityLabel("\(hub.uninstallButton) \(accessibilityTitle)")
+        } else if let reason = unsupportedReason {
             // .help() never fires on a disabled control, so the tooltip
             // has to sit on this wrapper. Flattening it loses the only
             // place the reason is shown.
             HStack(spacing: 0) {
-                toggle.disabled(true)
+                Button(hub.installButton) { flip(to: true) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(true)
+                    .accessibilityLabel("\(hub.installButton) \(accessibilityTitle). \(reason)")
             }
             .help(reason)
-            .accessibilityLabel("\(accessibilityTitle). \(reason)")
         } else {
-            toggle
+            Button(hub.installButton) { flip(to: true) }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .accessibilityLabel("\(hub.installButton) \(accessibilityTitle)")
         }
     }
 
@@ -893,6 +978,16 @@ private struct PermissionPortalRow: View {
 // MARK: - Titles, descriptions and permission names
 
 extension AppFeature {
+    /// What an option that needs this feature says while it is uninstalled.
+    func enableReason(_ l10n: L10n) -> String {
+        FeatureStrings.notchEditor(l10n.language).enableFeature(hubTitle(l10n.s, hub: FeatureStrings.hub(l10n.language)))
+    }
+
+    /// Features, at this feature, for an option that needs it.
+    func showInFeatures() {
+        SettingsRouter.shared.request(FeatureSettingsDestination(.features), targetFeature: self)
+    }
+
     /// Titles reuse the strings users already see across the app; only names
     /// with no clean existing form live in the hub strings.
     func hubTitle(_ s: Strings, hub: FeatureHubStrings) -> String {
@@ -903,11 +998,13 @@ extension AppFeature {
         case .windowMaximizer: return s.windowMaximizeName
         case .windowLayout: return FeatureStrings.windowLayout(L10n.shared.language).title
         case .autoQuit: return s.autoQuitName
+        case .spacesOrder: return s.spacesOrderName
         case .quitWindowProtection: return FeatureStrings.quitProtection(L10n.shared.language).name
         case .scrollInverter: return s.invertMouseScroll
         case .scrollHorizontal: return s.scrollHorizontalName
         case .focusFollowsMouse: return s.focusFollowsMouseName
         case .smoothScroll: return s.smoothScrollName
+        case .linearScroll: return s.linearScrollName
         case .mouseAcceleration: return s.mouseAccelerationName
         case .mouseNavigation: return hub.titleMouseNavigation
         case .mouseButtonShortcuts: return FeatureStrings.mouseButtons(L10n.shared.language).pageTitle
@@ -952,6 +1049,8 @@ extension AppFeature {
         case .notchDownloads: return FeatureStrings.notchFiles(L10n.shared.language).downloadsTitle
         case .notchCalendar: return FeatureStrings.notchCalendar(L10n.shared.language).title
         case .notchAgents: return FeatureStrings.notchAgents(L10n.shared.language).title
+        case .notchWatch: return FeatureStrings.notchWatch(L10n.shared.language).title
+        case .notchMascot: return FeatureStrings.notchMascot(L10n.shared.language).title
         case .notch: return FeatureStrings.notch(L10n.shared.language).title
         case .radialMenu: return FeatureStrings.radialMenu(L10n.shared.language).pageTitle
         case .scratchpad: return FeatureStrings.scratchpad(L10n.shared.language).pageTitle
@@ -983,11 +1082,13 @@ extension AppFeature {
         case .windowMaximizer: return hub.descWindowMaximizer
         case .windowLayout: return hub.descWindowLayout
         case .autoQuit: return hub.descAutoQuit
+        case .spacesOrder: return L10n.shared.s.spacesOrderCaption
         case .quitWindowProtection: return FeatureStrings.quitProtection(L10n.shared.language).description
         case .scrollInverter: return hub.descScrollInverter
         case .scrollHorizontal: return L10n.shared.s.scrollHorizontalCaption
         case .focusFollowsMouse: return L10n.shared.s.focusFollowsMouseCaption
         case .smoothScroll: return hub.descSmoothScroll
+        case .linearScroll: return L10n.shared.s.linearScrollCaption
         case .mouseAcceleration: return L10n.shared.s.mouseAccelerationCaption
         case .mouseNavigation: return hub.descMouseNavigation
         case .mouseButtonShortcuts: return FeatureStrings.mouseButtons(L10n.shared.language).hubDescription
@@ -1032,6 +1133,8 @@ extension AppFeature {
         case .notchDownloads: return FeatureStrings.notchFiles(L10n.shared.language).downloadsDescription
         case .notchCalendar: return FeatureStrings.notchCalendar(L10n.shared.language).description
         case .notchAgents: return FeatureStrings.notchAgents(L10n.shared.language).hubDescription
+        case .notchWatch: return FeatureStrings.notchWatch(L10n.shared.language).description
+        case .notchMascot: return FeatureStrings.notchMascot(L10n.shared.language).hubDescription
         case .notch: return FeatureStrings.notch(L10n.shared.language).description
         case .radialMenu: return FeatureStrings.radialMenu(L10n.shared.language).hubDescription
         case .scratchpad: return FeatureStrings.scratchpad(L10n.shared.language).hubDescription

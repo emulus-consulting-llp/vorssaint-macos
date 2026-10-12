@@ -16,10 +16,16 @@ struct MetricsTests {
             }),
             ("metrics", {
                 MetricsFeatureTests.run(suite)
+                MenuBarBatteryWarningTests.run(suite)
                 ProcessNameContract.run(suite)
                 SystemMonitorCPUTests.run(suite)
+                SystemMonitorPlanTests.run(suite)
+                SystemSectionBreakdownTests.run(suite)
             }),
-            ("clipboard", { ClipboardFeatureTests.run(suite) }),
+            ("clipboard", {
+                ClipboardFeatureTests.run(suite)
+                PastePlainTests.run(suite)
+            }),
             ("pointer-input", {
                 PointerOnDisplayContract.run(suite)
                 PointerInputFeatureTests.run(suite)
@@ -29,6 +35,7 @@ struct MetricsTests {
                 PointerScreenContract.run(suite)
             }),
             ("scroll-modifier", { ScrollHorizontalModifierTests.run(suite) }),
+            ("linear-scroll", { LinearScrollTapTests.run(suite) }),
             ("preferences", { PreferencesFeatureTests.run(suite) }),
             ("app-management", { AppManagementFeatureTests.run(suite) }),
             ("window-layout", { WindowLayoutFeatureTests.run(suite) }),
@@ -36,8 +43,21 @@ struct MetricsTests {
             ("mixer", {
                 MixerNativeDragTests.run(suite)
                 MixerOutputAdjustmentContract.run(suite)
+                MixerLevelCompensationContract.run(suite)
                 SoundOutputSwitchContract.run(suite)
+                MixerUniversalRoutingContract.run(suite)
+                AirPlayRingBufferContract.run(suite)
+                AirPlayRouteContract.run(suite)
+                AirPlayMixLimiterContract.run(suite)
+                AirPlayStreamRegistryContract.run(suite)
+                AirPlayFeedDriverContract.run(suite)
+                AirPlayRateChangeContract.run(suite)
+                AirPlayPrivateAPIContract.run(suite)
+                AirPlayAvailabilityContract.run(suite)
+                AirPlayConcurrentLanesContract.run(suite)
+                AirPlayBacklogContract.run(suite)
                 MixerInputVolumeContract.run(suite)
+                MixerPercentKeyTests.run(suite)
                 MixerFeatureTests.run(suite)
             }),
             ("audio-priority", { AudioPriorityTests.run(suite) }),
@@ -45,6 +65,7 @@ struct MetricsTests {
             ("overlays", { OverlayPanelTests.run(suite) }),
             ("updates", {
                 UpdateFeatureTests.run(suite)
+                LaunchAtLoginSettingsTests.run(suite)
                 PostUpdateStatusItemRecoveryTests.run(suite)
                 UpdateAdminInstallContract.run(suite)
                 UpdateHighlightsTests.run(suite)
@@ -55,7 +76,10 @@ struct MetricsTests {
                 ScreenshotPreviewHoverTests.run(suite)
                 ScreenshotWatermarkTests.run(suite)
                 ScreenshotFeatureTests.run(suite)
+                ScreenshotShareCompletionTests.run(suite)
+                ScreenshotAutoShelfTests.run(suite)
                 ScreenshotScrollingCaptureTests.run(suite)
+                ScreenshotAttachedCaptureTests.run(suite)
                 ScreenCaptureToolPickerTests.run(suite)
             }),
             ("recorder", {
@@ -65,27 +89,36 @@ struct MetricsTests {
                 RecorderExportRenderingTests.run(suite)
             }),
             ("command-bar", { CommandBarFeatureTests.run(suite) }),
+            ("notch-music", { NotchMusicExtrasTests.run(suite) }),
             ("notch", {
                 NotchTests.run(suite)
                 NotchCompactTests.run(suite)
+                NotchCapsuleTests.run(suite)
+                PlainTextLineMoverTests.run(suite)
                 NotchVolumeKeyTests.run(suite)
                 NotchSettingsTabRowTests.run(suite)
             }),
             ("switcher-model", { SwitcherModelFeatureTests.run(suite) }),
             ("agents", { NotchAgentTests.run(suite) }),
-            ("features", { FeatureCatalogTests.run(suite) }),
+            ("features", {
+                FeatureCatalogTests.run(suite)
+                MenuPanelSectionGateContract.run(suite)
+            }),
             ("utilities", {
                 UtilitiesFeatureTests.run(suite)
+                QuickTogglesAlertTests.run(suite)
                 PortManagerRefreshTests.run(suite)
             }),
             ("settings", {
                 SettingsFeatureTests.run(suite)
                 SettingsWindowTests.run { suite.expect($0, $1) }
                 NotchSettingsChoiceTests.run(suite)
+                MonitorTokenTests.run(suite)
             }),
             ("display-restoration", {
                 DisplayRestorationTests.run(suite)
                 BrightnessStepTests.run(suite)
+                BrightnessKeyRoutingTests.run(suite)
             }),
             ("software-dimming", { SoftwareDimmingRouteTests.run { suite.expect($0, $1) } }),
             ("capture", { ScreenshotSelectionRefreshContract.run(suite) }),
@@ -101,6 +134,7 @@ struct MetricsTests {
                 ScratchpadStoreContractTests.run(suite)
             }),
             ("quit-protection", { QuitProtectionHUD.progressChecks(suite) }),
+            ("scratchpad", { ScratchpadMarkTests.run { suite.expect($0, $1) } }),
             ("recording", {
                 RecorderSampleTimingTests.run(suite)
                 RecorderWriterTests.run(suite)
@@ -111,7 +145,10 @@ struct MetricsTests {
                 SpeedTestTests.run(suite)
                 NetworkAddressTests.run { suite.expect($0, $1) }
             }),
-            ("app-updates", { AppUpdatesContract.run(suite) }),
+            ("app-updates", {
+                AppUpdatesContract.run(suite)
+                AppUpdateRulesContract.run(suite)
+            }),
             ("localization", {
                 LocalizationTests.run(suite)
                 LocalizationFeatureContractTests.run(suite)
@@ -120,16 +157,22 @@ struct MetricsTests {
                 CleanerEligibilityTests.run(suite)
                 CleanerLastRunContract.run(suite)
                 CleanerScanFlowTests.run(suite)
+                CleanerLayoutTests.run(suite)
             }),
             ("uninstaller", {
                 UninstallerFlowTests.run(suite)
+                UninstallerCommandBarCleanupTests.run(suite)
                 SelfUninstallContract.run(suite)
             }),
+            ("force-quit", { ProcessForceQuitTests.run(suite) }),
             ("launcher", { QuickLauncherContract.run(suite) }),
             ("dock-autohide", {
+                DockPreviewPositionTests.run(suite)
+                DockPreviewScrollTests.run(suite)
                 DockAutohideHoldTests.run(suite)
                 DockPreviewFrameRestorationTests.run(suite)
             }),
+            ("spaces-order", { SpacesOrderTests.run(suite) }),
             ("switcher", {
                 SwitcherScrollContract.run(suite)
                 SwitcherActivationTests.run(suite)
@@ -162,7 +205,9 @@ struct MetricsTests {
             groups.forEach { print($0.0) }
             exit(0)
         }
-        for (name, body) in groups where selected.isEmpty || selected.contains(name) {
+        // notch-music is a focused subset already executed by notch. Running it
+        // twice in an unfiltered pass also repeats stateful adapter fixtures.
+        for (name, body) in groups where (selected.isEmpty && name != "notch-music") || selected.contains(name) {
             suite.run(name, body)
         }
         suite.finish()

@@ -4,7 +4,7 @@
 import Foundation
 import UniformTypeIdentifiers
 
-private typealias ProductionLyricsParser = NotchLyricsSupport
+typealias ProductionLyricsParser = NotchLyricsSupport
 
 /// Production lifecycle bodies are extracted by generate_sources.py. Only the
 /// session, chooser, preference source and network entry point are test doubles.
@@ -16,11 +16,47 @@ enum NotchLyricsContract {
         static func isEnabled() -> Bool { enabled }
         static func onlineEnabled() -> Bool { enabled && online }
         static let maximumBytes = ProductionLyricsParser.maximumBytes
+        static let maximumSearchBytes = ProductionLyricsParser.maximumSearchBytes
+        typealias Candidate = ProductionLyricsParser.Candidate
+        typealias ArtistIdentity = ProductionLyricsParser.ArtistIdentity
+        static func artistCacheKey(for track: NotchMusicIdentity) -> String { ProductionLyricsParser.artistCacheKey(for: track) }
+        static func artistIdentityURL(for track: NotchMusicIdentity) -> URL? { ProductionLyricsParser.artistIdentityURL(for: track) }
+        static func artistIdentities(_ data: Data, for track: NotchMusicIdentity, allowTruncated: Bool = false) -> [ArtistIdentity] { ProductionLyricsParser.artistIdentities(data, for: track, allowTruncated: allowTruncated) }
+        static func artistRecordingURL(for track: NotchMusicIdentity, candidates: [ArtistIdentity]) -> URL? { ProductionLyricsParser.artistRecordingURL(for: track, candidates: candidates) }
+        static func recordingArtistIdentity(_ data: Data, for track: NotchMusicIdentity, candidates: [ArtistIdentity]) -> ArtistIdentity? { ProductionLyricsParser.recordingArtistIdentity(data, for: track, candidates: candidates) }
+        static func artistAlbumURL(for track: NotchMusicIdentity) -> URL? { ProductionLyricsParser.artistAlbumURL(for: track) }
+        static func artistIdentity(_ data: Data, for track: NotchMusicIdentity, candidates: [ArtistIdentity]) -> ArtistIdentity? { ProductionLyricsParser.artistIdentity(data, for: track, candidates: candidates) }
+        static func aliasSearchURLs(for track: NotchMusicIdentity, identity: ArtistIdentity) -> [URL] { ProductionLyricsParser.aliasSearchURLs(for: track, identity: identity) }
+        static func lookupURL(for track: NotchMusicIdentity) -> URL? { ProductionLyricsParser.lookupURL(for: track) }
+        static func prefersDiscovery(for track: NotchMusicIdentity) -> Bool { ProductionLyricsParser.prefersDiscovery(for: track) }
+        static func discoveryURLs(for track: NotchMusicIdentity) -> [URL] { ProductionLyricsParser.discoveryURLs(for: track) }
+        static func searchURLs(for track: NotchMusicIdentity) -> [URL] { ProductionLyricsParser.searchURLs(for: track) }
+        static func decode(_ data: Data, for track: NotchMusicIdentity) -> NotchLyrics? { ProductionLyricsParser.decode(data, for: track) }
+        static func decodeCatalogMatch(_ data: Data, for track: NotchMusicIdentity) -> NotchLyrics? { ProductionLyricsParser.decodeCatalogMatch(data, for: track) }
+        static func searchCandidates(_ data: Data, for track: NotchMusicIdentity, verifiedArtistAliases: [String] = []) -> [Candidate] { ProductionLyricsParser.searchCandidates(data, for: track, verifiedArtistAliases: verifiedArtistAliases) }
+        static func containsCatalogRecording(_ data: Data, for track: NotchMusicIdentity) -> Bool { ProductionLyricsParser.containsCatalogRecording(data, for: track) }
+        static func bestLyrics(in candidates: [Candidate]) -> NotchLyrics? { ProductionLyricsParser.bestLyrics(in: candidates) }
+
         static func parse(_ source: String, duration: Double) -> [NotchLyricLine] {
             ProductionLyricsParser.parse(source, duration: duration)
         }
     }
     typealias NotchLyricsSupport = Preferences
+    enum NotchLyricsDownload {
+        struct Request {
+            let url: URL
+            let maximumBytes: Int
+            let session: Session
+            let completion: (NotchLyricsDownloadResult) -> Void
+        }
+        static var requests: [Request] = []
+        static func load(_ url: URL, maximumBytes: Int = Preferences.maximumBytes,
+                         completion: @escaping (NotchLyricsDownloadResult) -> Void) -> Session {
+            let session = Session()
+            requests.append(Request(url: url, maximumBytes: maximumBytes, session: session, completion: completion))
+            return session
+        }
+    }
     final class Session {
         var cancelled = false
         func invalidateAndCancel() { cancelled = true }
@@ -72,6 +108,7 @@ enum NotchLyricsContract {
         final class Queue {
             var jobs: [() -> Void] = []
             func async(execute action: @escaping () -> Void) { jobs.append(action) }
+            func asyncAfter(deadline: DispatchTime, execute work: DispatchWorkItem) { jobs.append { work.perform() } }
             func drain() { while !jobs.isEmpty { jobs.removeFirst()() } }
         }
     }
@@ -111,6 +148,8 @@ enum NotchQueueContract {
     typealias NotchQueueSupport = Preferences
 }
 
+enum NotchQueueHoldContract {}
+
 /// Production control and recovery methods run with a deterministic scheduler
 /// and a recording pipe, without a player process or a window.
 enum NotchMusicCommandContract {
@@ -126,6 +165,12 @@ enum NotchMusicCommandContract {
         func drain() { while !jobs.isEmpty { jobs.removeFirst()() } }
     }
     enum DispatchQueue { static var main = Scheduler() }
+    /// Records the song still published each time a new one is announced.
+    final class TrackChanges {
+        var shown: () -> NotchPlayback? = { nil }
+        var announcedOver: [NotchPlayback?] = []
+        func send() { announcedOver.append(shown()) }
+    }
     final class Process { var isRunning = true }
     final class Pipe {
         let fileHandleForWriting = Handle()
@@ -150,11 +195,15 @@ enum NotchMusicHardeningTests {
         sourcePreference(suite)
         artworkInheritance(suite)
         trackChanges(suite)
+        playbackGap(suite)
+        standInGap(suite)
         NotchPlaybackRoutingTests.run(suite)
         lyricExpansion(suite)
         lyricLifecycle(suite)
+        lyricLookup(suite)
         lyricPicker(suite)
         queueSelection(suite)
+        queueHold(suite)
         framing(suite)
         pendingCommands(suite)
         controlLifecycle(suite)
@@ -274,7 +323,7 @@ enum NotchMusicHardeningTests {
         let service = Contract.Service()
         service.start()
         suite.expect(service.launches == 1 && !service.includeOtherPlayers,
-                     "automatic playback starts with music apps only")
+                     "music-only automatic playback starts the adapter without other players")
         service.start()
         suite.expect(service.launches == 1, "an unchanged playback scope does not restart the adapter")
         service.chosenSource = .init(pid: 20, bundleIdentifier: "test.browser")
@@ -322,8 +371,150 @@ enum NotchMusicHardeningTests {
         tracker.reset()
         suite.expect(!tracker.isNewSong(reading("Five"), first: false),
                      "after the reader stops, a player's first song is not a change")
+        let playing = reading("Song")
+        suite.expect(NotchTrackChange.isBetweenSongs(nil, after: playing)
+                     && NotchTrackChange.isBetweenSongs(reading("Other", player: "com.example.other", playing: false), after: playing)
+                     && NotchTrackChange.isBetweenSongs(reading("Next", playing: false), after: playing),
+                     "nothing playing, another player's paused song or the next song paused is a player between songs")
+        suite.expect(!NotchTrackChange.isBetweenSongs(reading("Song", playing: false), after: playing)
+                     && !NotchTrackChange.isBetweenSongs(reading("Song", artist: nil, playing: false), after: playing)
+                     && !NotchTrackChange.isBetweenSongs(reading("Next"), after: playing)
+                     && !NotchTrackChange.isBetweenSongs(reading("Other", player: "com.example.other"), after: playing)
+                     && !NotchTrackChange.isBetweenSongs(reading("Other", player: "com.example.other", playing: false),
+                                                         after: reading("Song", playing: false)),
+                     "a pause, a song that plays, or a change after a paused song is shown at once")
+        func listing(hasTrack: Bool) -> NotchPlaybackSource {
+            NotchPlaybackSource(pid: 42, bundleIdentifier: "com.example.player", isMusicApp: false,
+                                isPlaying: false, hasTrack: hasTrack)
+        }
+        suite.expect(!NotchTrackChange.isBetweenSongs(reading("Other", player: "com.example.other", playing: false),
+                                                      after: playing, sources: [listing(hasTrack: true)]),
+                     "a player paused while automatic playback moves to another player's paused song is a pause")
+        suite.expect(NotchTrackChange.isBetweenSongs(reading("Other", player: "com.example.other", playing: false),
+                                                     after: playing, sources: [listing(hasTrack: false)])
+                     && NotchTrackChange.isBetweenSongs(reading("Next", playing: false), after: playing,
+                                                        sources: [listing(hasTrack: true)]),
+                     "a stand-in for a player that lists no song, or that player's own next song paused, is still a gap")
         suite.expect(NotchEvent.track.priority == 0 && NotchEvent.track.duration == 3,
                      "a new song gives way to any other notice and leaves after three seconds")
+    }
+
+    /// A player moving on to its next song can report nothing playing for a
+    /// moment. The production reading path keeps the last song through it.
+    private static func playbackGap(_ suite: TestSuite) {
+        typealias Contract = NotchMusicCommandContract
+        Contract.DispatchQueue.main = Contract.Scheduler()
+        defer { Contract.DispatchQueue.main = Contract.Scheduler() }
+        let service = Contract.Service()
+        service.trackChanges.shown = { [unowned service] in service.playback }
+        let player = NotchPlaybackSource(pid: 42, bundleIdentifier: "org.example.player", isMusicApp: true,
+                                         isPlaying: true, hasTrack: true)
+        let other = NotchPlaybackSource(pid: 202, bundleIdentifier: "test.browser", isMusicApp: false,
+                                        isPlaying: false, hasTrack: true)
+        func reading(_ playback: NotchPlayback?, sources: [NotchPlaybackSource] = [player, other]) -> Contract.Service.Reading {
+            Contract.Service.Reading(playback: playback, artwork: nil, tint: nil, sources: sources,
+                                     automatic: true, selectedPID: nil)
+        }
+        func controllable(_ item: String) -> NotchPlayback {
+            var song = playback(item)
+            song.commandContext = NotchPlaybackContext(pid: 42, revision: UUID())
+            song.canSendCommandsDirectly = true
+            return song
+        }
+        let current = controllable("current"), next = controllable("next")
+        service.start()
+        service.receive(reading(current))
+        service.receive(reading(nil, sources: [other]))
+        suite.expect(service.playback == current && service.sources == [player, other] && !service.awaitingPlayback,
+                     "a player between songs keeps its last song and sources instead of the empty page")
+        suite.expect(!service.send(.next) && !service.commandFailed,
+                     "the held song's controls send nothing, so a press cannot read as a failure")
+        service.receive(reading(nil, sources: [other]))
+        suite.expect(Contract.DispatchQueue.main.jobs.count == 1, "another empty reading does not extend the grace period")
+        service.receive(reading(next))
+        suite.expect(service.playback == next && service.gapWork == nil && service.trackChanges.announcedOver == [current],
+                     "the next song replaces the held one at once, announced while the old one is still shown")
+        suite.expect(service.send(.next), "the next song's controls work at once")
+        Contract.DispatchQueue.main.drain()
+        suite.expect(service.playback == next, "the ended gap cannot clear the next song later")
+        service.receive(reading(nil, sources: [other]))
+        Contract.DispatchQueue.main.drain()
+        suite.expect(service.playback == nil && service.sources == [other] && !service.awaitingPlayback,
+                     "playback that stays gone empties the page after the grace period, with the latest sources")
+        service.receive(reading(next))
+        service.receive(reading(nil, sources: [other]))
+        service.selectSource(other.selection)
+        Contract.DispatchQueue.main.drain()
+        suite.expect(service.playback == nil && service.awaitingPlayback,
+                     "choosing another source during a gap still waits for that source's first reading")
+        service.receive(reading(current))
+        service.receive(reading(nil, sources: [other]))
+        service.stop()
+        Contract.DispatchQueue.main.drain()
+        suite.expect(service.playback == nil && service.gapWork == nil,
+                     "stopping during a gap ends it, and the held song cannot come back")
+    }
+
+    /// Between songs another player's paused song can stand in, or the next
+    /// song can be reported paused before it starts. The production reading
+    /// path keeps the song that played through both, as through an empty one.
+    private static func standInGap(_ suite: TestSuite) {
+        typealias Contract = NotchMusicCommandContract
+        Contract.DispatchQueue.main = Contract.Scheduler()
+        defer { Contract.DispatchQueue.main = Contract.Scheduler() }
+        let service = Contract.Service()
+        service.trackChanges.shown = { [unowned service] in service.playback }
+        service.trackEnds.shown = { [unowned service] in service.playback }
+        let player = NotchPlaybackSource(pid: 42, bundleIdentifier: "org.example.player", isMusicApp: true,
+                                         isPlaying: true, hasTrack: true)
+        let other = NotchPlaybackSource(pid: 202, bundleIdentifier: "test.music", isMusicApp: true,
+                                        isPlaying: false, hasTrack: true)
+        func reading(_ playback: NotchPlayback, sources: [NotchPlaybackSource] = [player, other]) -> Contract.Service.Reading {
+            Contract.Service.Reading(playback: playback, artwork: nil, tint: nil, sources: sources,
+                                     automatic: true, selectedPID: nil)
+        }
+        func paused(_ song: NotchPlayback) -> NotchPlayback {
+            NotchPlayback(track: song.track, isPlaying: false, elapsed: 0, duration: song.duration, rate: 0,
+                          sampledAt: song.sampledAt, canSeek: false, itemIdentifier: song.itemIdentifier)
+        }
+        let current = playback("current"), next = playback("next"), later = playback("later")
+        let standIn = paused(NotchPlayback(track: RadialNowPlayingSnapshot(title: "Elsewhere", artist: "Other", album: nil,
+                                                                           artworkData: nil, appBundleIdentifier: "test.music",
+                                                                           appPID: 202),
+                                           isPlaying: false, elapsed: 30, duration: 200, rate: 0,
+                                           sampledAt: Date(timeIntervalSinceReferenceDate: 0), canSeek: false))
+        service.start()
+        service.receive(reading(current))
+        service.receive(reading(standIn, sources: [other]))
+        suite.expect(service.playback == current && service.sources == [player, other] && service.gapWork != nil,
+                     "another player's paused song standing in between songs keeps the song that played")
+        let listed = NotchPlaybackSource(pid: 42, bundleIdentifier: "org.example.player", isMusicApp: false,
+                                         isPlaying: false, hasTrack: true)
+        service.receive(reading(standIn, sources: [listed, other]))
+        suite.expect(service.playback == current && service.gapWork != nil,
+                     "a player that lists its next song again while it loads keeps the gap going")
+        service.receive(reading(next))
+        suite.expect(service.playback == next && service.gapWork == nil && service.trackChanges.announcedOver == [current],
+                     "the next song replaces it at once, announced while the song before is still shown")
+        service.receive(reading(paused(later)))
+        suite.expect(service.playback == next && service.gapWork != nil,
+                     "the next song reported paused before it starts keeps the song that played")
+        suite.expect(service.trackEnds.announcedOver.isEmpty, "a gap that ends in a new song ends nothing")
+        Contract.DispatchQueue.main.drain()
+        suite.expect(service.playback == paused(later) && service.gapWork == nil,
+                     "a song that stays paused is shown after the grace period")
+        suite.expect(service.trackEnds.announcedOver == [next],
+                     "the end of the song is announced while it is still shown")
+        service.receive(reading(later))
+        service.receive(reading(paused(later)))
+        suite.expect(service.playback == paused(later) && service.gapWork == nil && service.trackEnds.announcedOver == [next],
+                     "pausing the song that plays is shown at once, and ends nothing")
+        service.receive(reading(later))
+        service.receive(reading(standIn, sources: [listed, other]))
+        suite.expect(service.playback == standIn && service.gapWork == nil && service.sources == [listed, other],
+                     "a pause that hands automatic playback to another player's paused song is shown at once")
+        suite.expect(service.trackEnds.announcedOver == [next, later],
+                     "the strip leaves such a pause as its own song")
     }
 
     /// The adapter flags bytes equal to its previous reading as unchanged,
@@ -397,11 +588,27 @@ enum NotchMusicHardeningTests {
                      "music-only automatic playback ignores videos, even when they own the system session")
         suite.expect(choose([browser, paused], previous: 10, includeOtherPlayers: true) == browser
                      && choose([browser], includeOtherPlayers: true) == browser,
-                     "the opt-in restores automatic playback from other apps")
+                     "with other players included, automatic playback follows other apps")
+        suite.expect(choose([paused, browser], previous: 10, system: 10, includeOtherPlayers: true) == browser,
+                     "a playing browser takes over when the system player still points at paused music")
+        suite.expect(choose([browser], previous: nil, system: 99, includeOtherPlayers: true) == browser,
+                     "a newly registered playing client does not need an existing follow relationship")
+        suite.expect(choose([music, browser], previous: 20, system: 20, includeOtherPlayers: true) == music,
+                     "including other players preserves priority for actively playing music")
         let idleBrowser = source(20, music: false, playing: false)
         suite.expect(NotchPlaybackSource.preferred(in: [music, browser], previousPID: 10, systemPID: 10,
                                                    selection: browser.selection) == browser,
                      "an explicit browser selection overrides simultaneous music playback")
+        suite.expect(choose([paused, idleBrowser], previous: 10, system: 10, includeOtherPlayers: true) == paused,
+                     "an unrelated paused browser cannot replace a music resume control")
+        suite.expect(choose([paused, idleBrowser], previous: 20, system: 20, includeOtherPlayers: true) == idleBrowser
+                     && choose([paused, idleBrowser], previous: 20, system: 20) == paused,
+                     "pausing a followed browser keeps its place instead of switching to paused music")
+        let otherVideo = source(40, music: false)
+        suite.expect(choose([paused, idleBrowser, otherVideo], previous: 20, system: 20, includeOtherPlayers: true) == otherVideo
+                     && choose([idleBrowser, otherVideo], previous: 20, system: 20, includeOtherPlayers: true) == otherVideo
+                     && choose([music, idleBrowser], previous: 20, system: 20, includeOtherPlayers: true) == music,
+                     "another playing player or playing music takes over from a paused followed browser")
         suite.expect(NotchPlaybackSource.preferred(in: [music, idleBrowser], previousPID: 20, systemPID: 10,
                                                    selection: browser.selection) == idleBrowser,
                      "pausing a chosen browser keeps its resume control reachable")
@@ -546,6 +753,221 @@ enum NotchMusicHardeningTests {
         suite.expect(service.lyrics == nil && service.track == nil, "feature removal clears the cache even when it arrives through the hide path")
     }
 
+    private static func lyricLookup(_ suite: TestSuite) {
+        typealias Context = NotchLyricsContract
+        Context.resetPresentation()
+        Context.Preferences.enabled = true
+        Context.Preferences.online = true
+        defer {
+            Context.Preferences.online = false
+            Context.NotchLyricsDownload.requests = []
+            Context.resetPresentation()
+        }
+        let playback = NotchPlayback(
+            track: RadialNowPlayingSnapshot(title: "Режиссёр", artist: "группа Градусы", album: "Градусы",
+                                           artworkData: nil, appBundleIdentifier: nil, appPID: nil),
+            isPlaying: true, elapsed: 0, duration: 219, rate: 1, sampledAt: .now, canSeek: false)
+        let record: [String: Any] = ["trackName": "Режиссёр", "artistName": "Градусы",
+                                     "albumName": "Самые модные хиты", "duration": 219.0,
+                                     "syncedLyrics": "[00:01]Fixture", "plainLyrics": "Fixture"]
+        let searchReply = try! JSONSerialization.data(withJSONObject: [record])
+        let emptyReply = Data("[]".utf8)
+        func start(_ source: NotchPlayback = playback) -> Context.LookupService {
+            Context.NotchLyricsDownload.requests = []
+            let service = Context.LookupService()
+            service.update(playback: source, visible: true)
+            return service
+        }
+        let recovered = start()
+        suite.expect(Context.NotchLyricsDownload.requests.count == 1
+                     && Context.NotchLyricsDownload.requests[0].url.path == "/api/get",
+                     "the production lookup starts with one exact request")
+        Context.NotchLyricsDownload.requests[0].completion(.missing) // 404
+        Context.DispatchQueue.main.drain()
+        var index = 1
+        while recovered.state == .loading && index < Context.NotchLyricsDownload.requests.count {
+            let request = Context.NotchLyricsDownload.requests[index]
+            suite.expect(request.url.path == "/api/search" && request.url.host == "lrclib.net"
+                         && request.maximumBytes == NotchLyricsSupport.maximumSearchBytes,
+                         "fallback requests use the bounded search envelope on the same host")
+            request.completion(.payload(index == 2 ? searchReply : emptyReply))
+            Context.DispatchQueue.main.drain()
+            index += 1
+        }
+        suite.expect(recovered.state == .ready && recovered.lyrics?.plain == "Fixture"
+                     && Context.NotchLyricsDownload.requests.count <= 4,
+                     "the real sequential fallback recovers lyrics within four requests")
+        let failed = start()
+        Context.NotchLyricsDownload.requests[0].completion(.failed)
+        Context.DispatchQueue.main.drain()
+        suite.expect(failed.state == .failed && Context.NotchLyricsDownload.requests.count == 1,
+                     "transport failures do not trigger broad searches")
+        failed.hide()
+        failed.update(playback: playback, visible: true)
+        suite.expect(failed.state == .failed && Context.NotchLyricsDownload.requests.count == 1,
+                     "reopening a recent network failure sends no extra request")
+        failed.retry()
+        suite.expect(failed.state == .loading && Context.NotchLyricsDownload.requests.count == 2,
+                     "explicit Retry bypasses the short failure cache")
+        Context.NotchLyricsDownload.requests[1].completion(.failed)
+        Context.DispatchQueue.main.drain()
+        failed.settledAttempt?.expires = Date.distantPast
+        failed.hide()
+        failed.update(playback: playback, visible: true)
+        suite.expect(failed.state == .loading && Context.NotchLyricsDownload.requests.count == 3,
+                     "expired attempts allow a fresh lookup without changing the track")
+        let missing = start()
+        Context.NotchLyricsDownload.requests[0].completion(.missing)
+        Context.DispatchQueue.main.drain()
+        var requestIndex = 1
+        while missing.state == .loading && requestIndex < Context.NotchLyricsDownload.requests.count {
+            Context.NotchLyricsDownload.requests[requestIndex].completion(.payload(emptyReply))
+            Context.DispatchQueue.main.drain()
+            requestIndex += 1
+        }
+        let attempted = Context.NotchLyricsDownload.requests.count
+        missing.hide()
+        missing.update(playback: playback, visible: true)
+        suite.expect(missing.state == .unavailable && Context.NotchLyricsDownload.requests.count == attempted,
+                     "a recent unavailable recording reuses its result when reopened")
+        missing.playbackChanged(nil)
+        missing.update(playback: playback, visible: true)
+        suite.expect(missing.state == .loading && Context.NotchLyricsDownload.requests.count == attempted + 1,
+                     "a playback identity change clears the attempt cache")
+        let featuredPlayback = NotchPlayback(
+            track: RadialNowPlayingSnapshot(title: "Fictional Song (feat. Guest)", artist: "Main Artist",
+                                           album: "Album", artworkData: nil, appBundleIdentifier: nil, appPID: nil),
+            isPlaying: true, elapsed: 0, duration: 180, rate: 1, sampledAt: .now, canSeek: false)
+        let healthyMissing = start(featuredPlayback)
+        var healthyCursor = 0
+        while healthyMissing.state == .loading && healthyCursor < Context.NotchLyricsDownload.requests.count {
+            let request = Context.NotchLyricsDownload.requests[healthyCursor]
+            let response = request.url.host == "musicbrainz.org"
+                ? Data(#"{"count":0,"artists":[]}"#.utf8) : emptyReply
+            request.completion(request.url.path == "/api/get" ? .missing : .payload(response))
+            Context.DispatchQueue.main.drain()
+            healthyCursor += 1
+        }
+        suite.expect(healthyMissing.state == .unavailable && Context.NotchLyricsDownload.requests.count <= 6,
+                     "healthy empty discovery and alias results are unavailable, not a provider failure")
+        let unavailable = start()
+        Context.NotchLyricsDownload.requests[0].completion(.serviceUnavailable)
+        Context.DispatchQueue.main.drain()
+        suite.expect(unavailable.state == .loading && Context.NotchLyricsDownload.requests.count == 2,
+                     "HTTP server failures may recover through a working search endpoint")
+        Context.NotchLyricsDownload.requests[1].completion(.failed) // network error or rate limit
+        Context.DispatchQueue.main.drain()
+        suite.expect(unavailable.state == .failed && Context.NotchLyricsDownload.requests.count == 2,
+                     "network errors and rate limits stop the fallback chain")
+        for mode in 0..<4 {
+            let cancelled = start()
+            Context.NotchLyricsDownload.requests[0].completion(.missing)
+            Context.DispatchQueue.main.drain()
+            let pending = Context.NotchLyricsDownload.requests[1]
+            switch mode {
+            case 0: cancelled.hide()
+            case 1: cancelled.stop()
+            case 2: Context.Preferences.online = false
+            default: cancelled.playbackChanged(nil)
+            }
+            pending.completion(.payload(searchReply))
+            Context.DispatchQueue.main.drain()
+            suite.expect(cancelled.lyrics == nil && Context.NotchLyricsDownload.requests.count == 2,
+                         "late fallback results cannot publish or continue after hiding, shutdown, lost consent or song changes")
+            Context.Preferences.online = true
+        }
+        let mismatch = start()
+        // A 200 response with mismatching album metadata still enters fallback.
+        Context.NotchLyricsDownload.requests[0].completion(.payload(try! JSONSerialization.data(withJSONObject: record)))
+        Context.DispatchQueue.main.drain()
+        suite.expect(mismatch.state == .loading && Context.NotchLyricsDownload.requests.count == 2,
+                     "an unusable successful exact response receives the same fallback as a 404")
+        func reachMetadata(_ service: Context.LookupService) -> Context.NotchLyricsDownload.Request? {
+            var cursor = 0
+            while service.state == .loading && cursor < Context.NotchLyricsDownload.requests.count {
+                let request = Context.NotchLyricsDownload.requests[cursor]
+                if request.url.host == "musicbrainz.org" { return request }
+                request.completion(request.url.path == "/api/get" ? .missing : .payload(emptyReply))
+                Context.DispatchQueue.main.drain()
+                cursor += 1
+            }
+            return nil
+        }
+        let artistReply = try! JSONSerialization.data(withJSONObject: ["count": 1, "artists": [[
+            "id": UUID().uuidString, "name": "Alternate Artist", "aliases": [["name": "Градусы"]]
+        ]]])
+        var aliasRecord = record; aliasRecord["artistName"] = "Alternate Artist"
+        let aliasReply = try! JSONSerialization.data(withJSONObject: [aliasRecord])
+        let verified = start()
+        let metadata = reachMetadata(verified)
+        suite.expect(metadata?.url.host == "musicbrainz.org",
+                     "generic alias verification occurs only after empty catalog searches")
+        metadata?.completion(.payload(artistReply))
+        Context.DispatchQueue.main.drain()
+        let aliasRequest = Context.NotchLyricsDownload.requests.last!
+        suite.expect(aliasRequest.url.host == "lrclib.net" && aliasRequest.url.absoluteString.contains("Alternate"),
+                     "verified identity provides a bounded catalog query without artist-specific lists")
+        aliasRequest.completion(.payload(aliasReply))
+        Context.DispatchQueue.main.drain()
+        suite.expect(verified.state == .ready && Context.NotchLyricsDownload.requests.count <= 8,
+                     "the real lookup recovers a generic artist alias within the total request budget")
+        let requestsBeforeReopen = Context.NotchLyricsDownload.requests.count
+        verified.hide(); verified.update(playback: playback, visible: true)
+        suite.expect(Context.NotchLyricsDownload.requests.count == requestsBeforeReopen,
+                     "reopening resolved lyrics never repeats catalog or identity requests")
+        let secondPlayback = NotchPlayback(
+            track: RadialNowPlayingSnapshot(title: "Second Song", artist: "группа Градусы", album: "Градусы",
+                                           artworkData: nil, appBundleIdentifier: nil, appPID: nil),
+            isPlaying: true, elapsed: 0, duration: 219, rate: 1, sampledAt: .now, canSeek: false)
+        verified.playbackChanged(secondPlayback)
+        var cachedCursor = requestsBeforeReopen
+        while verified.state == .loading && cachedCursor < Context.NotchLyricsDownload.requests.count {
+            let request = Context.NotchLyricsDownload.requests[cachedCursor]
+            if request.url.absoluteString.contains("Alternate") {
+                var secondRecord = aliasRecord; secondRecord["trackName"] = "Second Song"
+                request.completion(.payload(try! JSONSerialization.data(withJSONObject: [secondRecord])))
+            } else {
+                request.completion(request.url.path == "/api/get" ? .missing : .payload(emptyReply))
+            }
+            Context.DispatchQueue.main.drain()
+            cachedCursor += 1
+        }
+        suite.expect(verified.state == .ready
+                     && Context.NotchLyricsDownload.requests.filter { $0.url.host == "musicbrainz.org" }.count == 1,
+                     "another song from the same artist and album reuses verified metadata without extra identity requests")
+        verified.stop()
+        suite.expect(verified.artistCache.isEmpty, "stopping lyrics clears its bounded metadata cache")
+        let wrongLength = start()
+        var longRecord = record; longRecord["artistName"] = "Градусы"; longRecord["duration"] = 223
+        let wrongReply = try! JSONSerialization.data(withJSONObject: [longRecord])
+        var wrongCursor = 0
+        while wrongLength.state == .loading && wrongCursor < Context.NotchLyricsDownload.requests.count {
+            let request = Context.NotchLyricsDownload.requests[wrongCursor]
+            request.completion(request.url.path == "/api/get" ? .missing : .payload(wrongReply))
+            Context.DispatchQueue.main.drain()
+            wrongCursor += 1
+        }
+        suite.expect(wrongLength.state == .unavailable
+                     && Context.NotchLyricsDownload.requests.allSatisfy { $0.url.host == "lrclib.net" },
+                     "a known artist and title with the wrong duration never triggers unnecessary identity verification")
+        for mode in 0..<3 {
+            let cancelledAlias = start()
+            let pending = reachMetadata(cancelledAlias)
+            switch mode {
+            case 0: cancelledAlias.hide()
+            case 1: cancelledAlias.playbackChanged(nil)
+            default: Context.Preferences.online = false
+            }
+            let count = Context.NotchLyricsDownload.requests.count
+            pending?.completion(.payload(artistReply))
+            Context.DispatchQueue.main.drain()
+            suite.expect(cancelledAlias.lyrics == nil && Context.NotchLyricsDownload.requests.count == count,
+                         "late identity replies cannot launch catalog queries after hiding, track changes or lost consent")
+            Context.Preferences.online = true
+        }
+
+    }
+
     private static func lyricPicker(_ suite: TestSuite) {
         typealias Context = NotchLyricsContract
         Context.Preferences.enabled = true
@@ -668,6 +1090,62 @@ enum NotchMusicHardeningTests {
         service.queueActionPending = false
         service.playQueued(row)
         suite.expect(service.commands.count == 1, "a hidden queue cannot enqueue another row action")
+        service.queueVisible = true
+        service.commands.removeAll()
+        service.upcoming = NotchQueueSnapshot(requestID: selected.requestID, currentIdentifier: "current", pid: 42,
+            items: [NotchQueueItem(id: "next", offset: 2, title: "Next", artist: "", duration: 0, artwork: Data([1]))],
+            canPlay: true)
+        service.playQueued(row)
+        suite.expect(service.commands == [.queuePlay(selected)], "a row drawn before its cover arrived still plays")
+    }
+
+    private static func queueHold(_ suite: TestSuite) {
+        let service = NotchQueueHoldContract.Service()
+        let request = UUID()
+        let cover = Data([1, 2, 3])
+        func reply(anchor: String, pid: Int32 = 42, rows: [[String: Any]]) -> [String: Any] {
+            ["queueRequest": request.uuidString, "queueAvailable": true, "currentIdentifier": anchor,
+             "pid": pid, "queueCanPlay": true, "queueItems": rows]
+        }
+        let covered = reply(anchor: "a", rows: [["id": "b", "offset": 1, "title": "B", "artworkBase64": cover.base64EncodedString()],
+                                                ["id": "c", "offset": 2, "title": "C"]])
+        service.queueRequest = request
+        service.playback = playback("a")
+        service.queueReply = covered
+        service.updateQueue()
+        suite.expect(service.upcoming?.items.map(\.id) == ["b", "c"] && service.upcomingArtwork == ["b": cover]
+               && !service.upcomingIsHeld, "a decoded queue publishes the covers its rows carry")
+        let shown = service.upcoming
+        service.playback = playback("b")
+        service.updateQueue()
+        suite.expect(service.upcoming == shown && service.upcomingArtwork == ["b": cover],
+               "a song change keeps the rows and covers on screen until the new song's queue arrives")
+        suite.expect(service.upcomingIsHeld && service.upcomingRows.map(\.id) == ["c"],
+               "held rows leave out the song now playing and refuse row actions")
+        service.queueReply = reply(anchor: "b", rows: [["id": "c", "offset": 1, "title": "C"]])
+        service.updateQueue()
+        suite.expect(service.upcoming?.currentIdentifier == "b" && !service.upcomingIsHeld
+               && service.upcomingRows.map(\.id) == ["c"], "the new song's queue replaces the held rows")
+        var anonymous = playback("b")
+        anonymous.itemIdentifier = nil
+        var old = covered
+        old["queueRequest"] = UUID().uuidString
+        let endings: [(NotchPlayback, [String: Any])] = [
+            (playback("b"), ["queueRequest": request.uuidString, "queueAvailable": false]),
+            (playback("b"), reply(anchor: "a", pid: 43, rows: [])),
+            (playback("b"), old),
+            (anonymous, covered)
+        ]
+        for (current, ending) in endings {
+            service.playback = playback("a")
+            service.queueReply = covered
+            service.updateQueue()
+            service.playback = current
+            service.queueReply = ending
+            service.updateQueue()
+            suite.expect(service.upcoming == nil && service.upcomingArtwork.isEmpty,
+                   "an unavailable queue, another player, an old request or an unidentified song clears the rows")
+        }
     }
 
     private static func framing(_ suite: TestSuite) {

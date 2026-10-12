@@ -95,6 +95,8 @@ struct FeatureHubStrings {
     let footerNote: String
     let restartNote: String
     let restartButton: String
+    let installButton: String
+    let uninstallButton: String
     let installAllButton: String
     let uninstallAllButton: String
     let presetsTitle: String
@@ -126,6 +128,11 @@ struct FeatureHubStrings {
     let notchUninstallMessageFormat: String   // "…: %@. …", the installed extensions' names
     let notchUninstallWithExtensions: String
     let notchUninstallKeepExtensions: String
+    // Installed features never turned on, offered for uninstalling together
+    let neverUsedTitle: String
+    let neverUsedMessageFormat: String   // "…: %@. …" with the feature names
+    let neverUsedUninstall: String
+    let neverUsedKeep: String
 }
 
 extension FeatureStrings {
@@ -235,6 +242,8 @@ extension FeatureHubStrings {
         footerNote: "제거해도 아무것도 삭제되지 않습니다. 기능이 앱에서 빠지고 더 이상 불러와지지 않을 뿐입니다. 언제든 다시 설치하면 이전처럼 모두 돌아옵니다.",
         restartNote: "이 세션에서 제거한 기능은 앱을 다시 시작할 때까지 불러온 상태로 남습니다. 지금 메모리에서 해제하려면 다시 시작하세요.",
         restartButton: "지금 다시 시작",
+        installButton: "설치",
+        uninstallButton: "제거",
         installAllButton: "모두 설치",
         uninstallAllButton: "모두 제거",
         presetsTitle: "묶음으로 시작하기",
@@ -242,7 +251,7 @@ extension FeatureHubStrings {
         presetEssentialName: "기본 기능",
         presetEssentialDesc: "볼륨 믹서, 시스템 모니터 및 절전 방지.",
         presetWindowsName: "윈도우",
-        presetWindowsDesc: "앱 전환기, 윈도우 정렬 및 Dock 기능.",
+        presetWindowsDesc: "윈도우 전환기, 윈도우 정렬 및 Dock 기능.",
         presetBatteryName: "배터리 및 조용함",
         presetBatteryDesc: "배터리, 메모리 및 프로세서를 표시하는 간결한 모니터입니다. 어떤 입력도 감시하지 않습니다.",
         presetApplyButton: "적용",
@@ -264,7 +273,11 @@ extension FeatureHubStrings {
         notchUninstallTitle: "Dynamic Island 제거",
         notchUninstallMessageFormat: "다음 확장 기능은 Dynamic Island 안에서만 작동합니다: %@. 함께 제거할까요? 아무것도 삭제되지 않으며 한 번의 클릭으로 모두 되돌릴 수 있습니다.",
         notchUninstallWithExtensions: "확장 기능도 제거",
-        notchUninstallKeepExtensions: "확장 기능 유지"
+        notchUninstallKeepExtensions: "확장 기능 유지",
+        neverUsedTitle: "한 번도 켜지 않은 기능",
+        neverUsedMessageFormat: "다음 기능은 설치되어 있지만 한 번도 켜진 적이 없습니다: %@. 제거하면 패널과 설정이 짧아집니다. 아무것도 삭제되지 않으며 클릭 한 번으로 다시 돌아옵니다.",
+        neverUsedUninstall: "이 기능 제거",
+        neverUsedKeep: "유지"
     )
 }
 
@@ -353,6 +366,8 @@ extension FeatureHubStrings {
         footerNote: "Uninstalling deletes nothing: the feature just leaves the app and stops loading. Install it again anytime and everything returns as it was.",
         restartNote: "Features uninstalled in this session stay loaded until the app restarts. Restart to unload them from memory now.",
         restartButton: "Restart now",
+        installButton: "Install",
+        uninstallButton: "Uninstall",
         installAllButton: "Install all",
         uninstallAllButton: "Uninstall all",
         presetsTitle: "Start with a bundle",
@@ -360,7 +375,7 @@ extension FeatureHubStrings {
         presetEssentialName: "Essentials",
         presetEssentialDesc: "Volume mixer, system monitor and keep awake.",
         presetWindowsName: "Windows",
-        presetWindowsDesc: "App switcher, window layout and the Dock features.",
+        presetWindowsDesc: "Window switcher, window layout and the Dock features.",
         presetBatteryName: "Battery and quiet",
         presetBatteryDesc: "A lean monitor with battery, memory and processor. Nothing listens to input.",
         presetApplyButton: "Apply",
@@ -382,7 +397,11 @@ extension FeatureHubStrings {
         notchUninstallTitle: "Uninstall Dynamic Island",
         notchUninstallMessageFormat: "These extensions only work inside the Dynamic Island: %@. Uninstall them too? Nothing is deleted, and everything comes back with one click.",
         notchUninstallWithExtensions: "Uninstall extensions too",
-        notchUninstallKeepExtensions: "Keep extensions"
+        notchUninstallKeepExtensions: "Keep extensions",
+        neverUsedTitle: "Never turned on",
+        neverUsedMessageFormat: "These features are installed but have never been on: %@. Uninstalling them makes the panel and Settings shorter. Nothing is deleted, and each one comes back with one click.",
+        neverUsedUninstall: "Uninstall these",
+        neverUsedKeep: "Keep them"
     )
 
     static let ptBR = FeatureHubStrings(
@@ -469,6 +488,8 @@ extension FeatureHubStrings {
         footerNote: "Desinstalar não apaga nada: a feature só some do app e deixa de carregar. Instale de novo quando quiser e tudo volta como estava.",
         restartNote: "Features desinstaladas nesta sessão continuam carregadas até o app reiniciar. Reinicie para tirar tudo da memória agora.",
         restartButton: "Reiniciar agora",
+        installButton: "Instalar",
+        uninstallButton: "Desinstalar",
         installAllButton: "Instalar tudo",
         uninstallAllButton: "Desinstalar tudo",
         presetsTitle: "Comece por um pacote",
@@ -476,7 +497,7 @@ extension FeatureHubStrings {
         presetEssentialName: "Essencial",
         presetEssentialDesc: "Mixer de volume, monitor do sistema e manter acordado.",
         presetWindowsName: "Janelas",
-        presetWindowsDesc: "Alternador de apps, layout de janelas e os recursos do Dock.",
+        presetWindowsDesc: "Alternador de janelas, layout de janelas e os recursos do Dock.",
         presetBatteryName: "Bateria e silêncio",
         presetBatteryDesc: "Monitor enxuto com bateria, memória e processador. Nada escuta o teclado ou o mouse.",
         presetApplyButton: "Aplicar",
@@ -498,7 +519,11 @@ extension FeatureHubStrings {
         notchUninstallTitle: "Desinstalar Dynamic Island",
         notchUninstallMessageFormat: "Estas extensões só funcionam dentro da Dynamic Island: %@. Desinstalar também? Nada é apagado e tudo volta com um clique.",
         notchUninstallWithExtensions: "Desinstalar extensões também",
-        notchUninstallKeepExtensions: "Manter extensões"
+        notchUninstallKeepExtensions: "Manter extensões",
+        neverUsedTitle: "Nunca ativados",
+        neverUsedMessageFormat: "Estes recursos estão instalados, mas nunca foram ativados: %@. Desinstalar deixa o painel e os Ajustes mais curtos. Nada é apagado, e cada um volta com um clique.",
+        neverUsedUninstall: "Desinstalar estes",
+        neverUsedKeep: "Manter"
     )
 
     static let tr = FeatureHubStrings(
@@ -585,6 +610,8 @@ extension FeatureHubStrings {
         footerNote: "Kaldırmak hiçbir şeyi silmez: özellik yalnızca uygulamadan kaybolur ve yüklenmeyi bırakır. İstediğinizde yeniden yükleyin, her şey olduğu gibi geri gelir.",
         restartNote: "Bu oturumda kaldırılan özellikler uygulama yeniden başlayana kadar yüklü kalır. Şimdi bellekten atmak için yeniden başlatın.",
         restartButton: "Şimdi yeniden başlat",
+        installButton: "Yükle",
+        uninstallButton: "Kaldır",
         installAllButton: "Tümünü yükle",
         uninstallAllButton: "Tümünü kaldır",
         presetsTitle: "Bir paketle başlayın",
@@ -592,7 +619,7 @@ extension FeatureHubStrings {
         presetEssentialName: "Temel",
         presetEssentialDesc: "Ses karıştırıcı, sistem monitörü ve uyanık tutma.",
         presetWindowsName: "Pencereler",
-        presetWindowsDesc: "Uygulama değiştirici, pencere düzeni ve Dock özellikleri.",
+        presetWindowsDesc: "Pencere değiştirici, pencere düzeni ve Dock özellikleri.",
         presetBatteryName: "Pil ve sessizlik",
         presetBatteryDesc: "Pil, bellek ve işlemciyle yalın bir monitör. Hiçbir şey girişleri dinlemez.",
         presetApplyButton: "Uygula",
@@ -614,7 +641,11 @@ extension FeatureHubStrings {
         notchUninstallTitle: "Dynamic Island’ı kaldır",
         notchUninstallMessageFormat: "Bu uzantılar yalnızca Dynamic Island içinde çalışır: %@. Onlar da kaldırılsın mı? Hiçbir şey silinmez, hepsi tek tıkla geri gelir.",
         notchUninstallWithExtensions: "Uzantıları da kaldır",
-        notchUninstallKeepExtensions: "Uzantılar kalsın"
+        notchUninstallKeepExtensions: "Uzantılar kalsın",
+        neverUsedTitle: "Hiç açılmadı",
+        neverUsedMessageFormat: "Bu özellikler yüklü ama hiç açılmadı: %@. Kaldırırsanız panel ve Ayarlar kısalır. Hiçbir şey silinmez ve her biri tek tıkla geri gelir.",
+        neverUsedUninstall: "Bunları kaldır",
+        neverUsedKeep: "Kalsın"
     )
 
     static let ru = FeatureHubStrings(
@@ -701,6 +732,8 @@ extension FeatureHubStrings {
         footerNote: "Удаление ничего не стирает: функция просто исчезает из приложения и перестаёт загружаться. Установите её снова, и всё вернётся как было.",
         restartNote: "Функции, удалённые в этой сессии, остаются в памяти до перезапуска приложения. Перезапустите, чтобы выгрузить их прямо сейчас.",
         restartButton: "Перезапустить сейчас",
+        installButton: "Установить",
+        uninstallButton: "Удалить",
         installAllButton: "Установить все",
         uninstallAllButton: "Удалить все",
         presetsTitle: "Начните с набора",
@@ -708,7 +741,7 @@ extension FeatureHubStrings {
         presetEssentialName: "Основное",
         presetEssentialDesc: "Микшер громкости, системный монитор и режим без сна.",
         presetWindowsName: "Окна",
-        presetWindowsDesc: "Переключатель приложений, раскладка окон и функции Dock.",
+        presetWindowsDesc: "Переключатель окон, раскладка окон и функции Dock.",
         presetBatteryName: "Батарея и тишина",
         presetBatteryDesc: "Компактный монитор с батареей, памятью и процессором. Ничто не слушает ввод.",
         presetApplyButton: "Применить",
@@ -730,7 +763,11 @@ extension FeatureHubStrings {
         notchUninstallTitle: "Удалить Dynamic Island",
         notchUninstallMessageFormat: "Эти расширения работают только внутри Dynamic Island: %@. Удалить и их? Ничего не стирается, всё возвращается одним кликом.",
         notchUninstallWithExtensions: "Удалить и расширения",
-        notchUninstallKeepExtensions: "Оставить расширения"
+        notchUninstallKeepExtensions: "Оставить расширения",
+        neverUsedTitle: "Ни разу не включались",
+        neverUsedMessageFormat: "Эти функции установлены, но ни разу не включались: %@. Если их удалить, панель и настройки станут короче. Ничего не стирается, и любую можно вернуть одним щелчком.",
+        neverUsedUninstall: "Удалить их",
+        neverUsedKeep: "Оставить"
     )
 
     static let es = FeatureHubStrings(
@@ -817,6 +854,8 @@ extension FeatureHubStrings {
         footerNote: "Desinstalar no borra nada: la función solo desaparece de la app y deja de cargarse. Instálala de nuevo cuando quieras y todo vuelve como estaba.",
         restartNote: "Las funciones desinstaladas en esta sesión siguen cargadas hasta reiniciar la app. Reinicia para sacarlas de la memoria ahora.",
         restartButton: "Reiniciar ahora",
+        installButton: "Instalar",
+        uninstallButton: "Desinstalar",
         installAllButton: "Instalar todo",
         uninstallAllButton: "Desinstalar todo",
         presetsTitle: "Empieza con un paquete",
@@ -824,7 +863,7 @@ extension FeatureHubStrings {
         presetEssentialName: "Esencial",
         presetEssentialDesc: "Mezclador de volumen, monitor del sistema y mantener despierto.",
         presetWindowsName: "Ventanas",
-        presetWindowsDesc: "Selector de apps, disposición de ventanas y las funciones del Dock.",
+        presetWindowsDesc: "Selector de ventanas, disposición de ventanas y las funciones del Dock.",
         presetBatteryName: "Batería y silencio",
         presetBatteryDesc: "Un monitor ligero con batería, memoria y procesador. Nada escucha el teclado ni el ratón.",
         presetApplyButton: "Aplicar",
@@ -846,7 +885,11 @@ extension FeatureHubStrings {
         notchUninstallTitle: "Desinstalar Dynamic Island",
         notchUninstallMessageFormat: "Estas extensiones solo funcionan dentro del Dynamic Island: %@. ¿Desinstalarlas también? No se borra nada y todo vuelve con un clic.",
         notchUninstallWithExtensions: "Desinstalar también las extensiones",
-        notchUninstallKeepExtensions: "Conservar las extensiones"
+        notchUninstallKeepExtensions: "Conservar las extensiones",
+        neverUsedTitle: "Nunca activadas",
+        neverUsedMessageFormat: "Estas funciones están instaladas, pero nunca se activaron: %@. Desinstalarlas acorta el panel y los Ajustes. No se borra nada y cada una vuelve con un clic.",
+        neverUsedUninstall: "Desinstalar estas",
+        neverUsedKeep: "Conservarlas"
     )
 
     static let sk = FeatureHubStrings(
@@ -933,6 +976,8 @@ extension FeatureHubStrings {
         footerNote: "Odinštalovanie nič nevymaže: funkcia len opustí aplikáciu a prestane sa načítavať. Kedykoľvek ju nainštalujte znova a všetko sa vráti tak, ako bolo.",
         restartNote: "Funkcie odinštalované v tejto relácii zostávajú načítané, kým aplikáciu reštartujete. Reštartujte ju, ak ich chcete hneď uvoľniť z pamäte.",
         restartButton: "Reštartovať teraz",
+        installButton: "Nainštalovať",
+        uninstallButton: "Odinštalovať",
         installAllButton: "Nainštalovať všetko",
         uninstallAllButton: "Odinštalovať všetko",
         presetsTitle: "Začnite balíkom",
@@ -940,7 +985,7 @@ extension FeatureHubStrings {
         presetEssentialName: "Základ",
         presetEssentialDesc: "Mixér hlasitosti, systémový monitor a udržanie v bdelom stave.",
         presetWindowsName: "Okná",
-        presetWindowsDesc: "Prepínač aplikácií, usporiadanie okien a funkcie Docku.",
+        presetWindowsDesc: "Prepínač okien, usporiadanie okien a funkcie Docku.",
         presetBatteryName: "Batéria a ticho",
         presetBatteryDesc: "Odľahčený monitor s batériou, pamäťou a procesorom. Nič nesleduje vstupy.",
         presetApplyButton: "Použiť",
@@ -962,7 +1007,11 @@ extension FeatureHubStrings {
         notchUninstallTitle: "Odinštalovať Dynamic Island",
         notchUninstallMessageFormat: "Tieto rozšírenia fungujú len v rámci Dynamic Island: %@. Odinštalovať aj ich? Nič sa nevymaže, všetko sa dá vrátiť jedným kliknutím.",
         notchUninstallWithExtensions: "Odinštalovať aj rozšírenia",
-        notchUninstallKeepExtensions: "Ponechať rozšírenia"
+        notchUninstallKeepExtensions: "Ponechať rozšírenia",
+        neverUsedTitle: "Nikdy nezapnuté",
+        neverUsedMessageFormat: "Tieto funkcie sú nainštalované, ale ešte nikdy neboli zapnuté: %@. Ich odinštalovaním sa panel a nastavenia skrátia. Nič sa nevymaže a každá sa vráti jedným kliknutím.",
+        neverUsedUninstall: "Odinštalovať tieto",
+        neverUsedKeep: "Ponechať"
     )
 
     static let de = FeatureHubStrings(
@@ -1049,6 +1098,8 @@ extension FeatureHubStrings {
         footerNote: "Deinstallieren löscht nichts: Die Funktion verschwindet nur aus der App und lädt nicht mehr. Installiere sie jederzeit wieder, alles kommt zurück wie es war.",
         restartNote: "In dieser Sitzung deinstallierte Funktionen bleiben bis zum Neustart der App geladen. Starte neu, um sie jetzt aus dem Speicher zu nehmen.",
         restartButton: "Jetzt neu starten",
+        installButton: "Installieren",
+        uninstallButton: "Deinstallieren",
         installAllButton: "Alle installieren",
         uninstallAllButton: "Alle deinstallieren",
         presetsTitle: "Mit einem Paket starten",
@@ -1056,7 +1107,7 @@ extension FeatureHubStrings {
         presetEssentialName: "Essentials",
         presetEssentialDesc: "Lautstärkemixer, Systemmonitor und Wachhalten.",
         presetWindowsName: "Fenster",
-        presetWindowsDesc: "App-Umschalter, Fensterlayout und die Dock-Funktionen.",
+        presetWindowsDesc: "Fensterumschalter, Fensterlayout und die Dock-Funktionen.",
         presetBatteryName: "Batterie und Ruhe",
         presetBatteryDesc: "Ein schlanker Monitor mit Batterie, Speicher und Prozessor. Nichts hört auf Eingaben.",
         presetApplyButton: "Anwenden",
@@ -1078,7 +1129,11 @@ extension FeatureHubStrings {
         notchUninstallTitle: "Dynamic Island deinstallieren",
         notchUninstallMessageFormat: "Diese Erweiterungen funktionieren nur im Dynamic Island: %@. Auch deinstallieren? Nichts wird gelöscht, alles kommt mit einem Klick zurück.",
         notchUninstallWithExtensions: "Erweiterungen auch deinstallieren",
-        notchUninstallKeepExtensions: "Erweiterungen behalten"
+        notchUninstallKeepExtensions: "Erweiterungen behalten",
+        neverUsedTitle: "Nie eingeschaltet",
+        neverUsedMessageFormat: "Diese Funktionen sind installiert, waren aber nie eingeschaltet: %@. Deinstallierst du sie, werden Panel und Einstellungen kürzer. Nichts wird gelöscht, und jede kommt mit einem Klick zurück.",
+        neverUsedUninstall: "Diese deinstallieren",
+        neverUsedKeep: "Behalten"
     )
 
     static let fr = FeatureHubStrings(
@@ -1165,6 +1220,8 @@ extension FeatureHubStrings {
         footerNote: "Désinstaller n’efface rien\u{00A0}: la fonction disparaît simplement de l’app et ne se charge plus. Réinstallez-la quand vous voulez, tout revient comme avant.",
         restartNote: "Les fonctions désinstallées pendant cette session restent chargées jusqu’au redémarrage de l’app. Redémarrez pour les décharger maintenant.",
         restartButton: "Redémarrer maintenant",
+        installButton: "Installer",
+        uninstallButton: "Désinstaller",
         installAllButton: "Tout installer",
         uninstallAllButton: "Tout désinstaller",
         presetsTitle: "Commencez par un pack",
@@ -1172,7 +1229,7 @@ extension FeatureHubStrings {
         presetEssentialName: "Essentiel",
         presetEssentialDesc: "Mixeur de volume, moniteur système et maintien éveillé.",
         presetWindowsName: "Fenêtres",
-        presetWindowsDesc: "Sélecteur d’apps, disposition des fenêtres et les fonctions du Dock.",
+        presetWindowsDesc: "Sélecteur de fenêtres, disposition des fenêtres et les fonctions du Dock.",
         presetBatteryName: "Batterie et silence",
         presetBatteryDesc: "Un moniteur léger avec batterie, mémoire et processeur. Rien n’écoute les saisies.",
         presetApplyButton: "Appliquer",
@@ -1194,7 +1251,11 @@ extension FeatureHubStrings {
         notchUninstallTitle: "Désinstaller Dynamic Island",
         notchUninstallMessageFormat: "Ces extensions ne fonctionnent que dans Dynamic Island\u{00A0}: %@. Les désinstaller aussi\u{00A0}? Rien n’est effacé et tout revient en un clic.",
         notchUninstallWithExtensions: "Désinstaller aussi les extensions",
-        notchUninstallKeepExtensions: "Conserver les extensions"
+        notchUninstallKeepExtensions: "Conserver les extensions",
+        neverUsedTitle: "Jamais activées",
+        neverUsedMessageFormat: "Ces fonctions sont installées mais n’ont jamais été activées\u{00A0}: %@. Les désinstaller raccourcit le panneau et les Réglages. Rien n’est effacé, et chacune revient en un clic.",
+        neverUsedUninstall: "Les désinstaller",
+        neverUsedKeep: "Les garder"
     )
 
     static let it = FeatureHubStrings(
@@ -1281,6 +1342,8 @@ extension FeatureHubStrings {
         footerNote: "Disinstallare non cancella nulla: la funzione sparisce dall’app e smette di caricarsi. Reinstallala quando vuoi e tutto torna com’era.",
         restartNote: "Le funzioni disinstallate in questa sessione restano caricate finché l’app non si riavvia. Riavvia per scaricarle dalla memoria ora.",
         restartButton: "Riavvia ora",
+        installButton: "Installa",
+        uninstallButton: "Disinstalla",
         installAllButton: "Installa tutto",
         uninstallAllButton: "Disinstalla tutto",
         presetsTitle: "Inizia da un pacchetto",
@@ -1288,7 +1351,7 @@ extension FeatureHubStrings {
         presetEssentialName: "Essenziale",
         presetEssentialDesc: "Mixer del volume, monitor di sistema e mantieni sveglio.",
         presetWindowsName: "Finestre",
-        presetWindowsDesc: "Selettore di app, layout delle finestre e le funzioni del Dock.",
+        presetWindowsDesc: "Selettore di finestre, layout delle finestre e le funzioni del Dock.",
         presetBatteryName: "Batteria e silenzio",
         presetBatteryDesc: "Un monitor essenziale con batteria, memoria e processore. Nulla ascolta gli input.",
         presetApplyButton: "Applica",
@@ -1310,7 +1373,11 @@ extension FeatureHubStrings {
         notchUninstallTitle: "Disinstalla Dynamic Island",
         notchUninstallMessageFormat: "Queste estensioni funzionano solo nel Dynamic Island: %@. Disinstallare anche loro? Nulla viene cancellato e tutto torna con un clic.",
         notchUninstallWithExtensions: "Disinstalla anche le estensioni",
-        notchUninstallKeepExtensions: "Mantieni le estensioni"
+        notchUninstallKeepExtensions: "Mantieni le estensioni",
+        neverUsedTitle: "Mai attivate",
+        neverUsedMessageFormat: "Queste funzioni sono installate ma non sono mai state attivate: %@. Disinstallarle accorcia il pannello e le Impostazioni. Non si cancella nulla e ognuna torna con un clic.",
+        neverUsedUninstall: "Disinstalla queste",
+        neverUsedKeep: "Mantienile"
     )
 
     static let ja = FeatureHubStrings(
@@ -1397,6 +1464,8 @@ extension FeatureHubStrings {
         footerNote: "アンインストールしても何も消えません。機能がアプリから消えて読み込まれなくなるだけです。いつでもインストールし直せば、すべて元どおりに戻ります。",
         restartNote: "このセッションでアンインストールした機能は、アプリを再起動するまで読み込まれたままです。今すぐメモリから外すには再起動してください。",
         restartButton: "今すぐ再起動",
+        installButton: "インストール",
+        uninstallButton: "アンインストール",
         installAllButton: "すべてインストール",
         uninstallAllButton: "すべてアンインストール",
         presetsTitle: "パックから始める",
@@ -1404,7 +1473,7 @@ extension FeatureHubStrings {
         presetEssentialName: "エッセンシャル",
         presetEssentialDesc: "音量ミキサー、システムモニタ、スリープ防止。",
         presetWindowsName: "ウインドウ",
-        presetWindowsDesc: "アプリスイッチャー、ウインドウレイアウト、Dockの機能。",
+        presetWindowsDesc: "ウインドウスイッチャー、ウインドウレイアウト、Dockの機能。",
         presetBatteryName: "バッテリーと静けさ",
         presetBatteryDesc: "バッテリー、メモリ、プロセッサだけの軽量モニタ。入力を監視するものはありません。",
         presetApplyButton: "適用",
@@ -1426,7 +1495,11 @@ extension FeatureHubStrings {
         notchUninstallTitle: "Dynamic Islandをアンインストール",
         notchUninstallMessageFormat: "次の拡張機能はDynamic Islandの中でのみ動作します：%@。これらもアンインストールしますか？何も削除されず、すべてワンクリックで戻ります。",
         notchUninstallWithExtensions: "拡張機能もアンインストール",
-        notchUninstallKeepExtensions: "拡張機能を残す"
+        notchUninstallKeepExtensions: "拡張機能を残す",
+        neverUsedTitle: "一度もオンにしていない機能",
+        neverUsedMessageFormat: "次の機能はインストール済みですが、一度もオンになっていません: %@。アンインストールするとパネルと設定が短くなります。何も消えず、どれもワンクリックで戻せます。",
+        neverUsedUninstall: "これらをアンインストール",
+        neverUsedKeep: "残す"
     )
 
     static let zhHans = FeatureHubStrings(
@@ -1435,7 +1508,7 @@ extension FeatureHubStrings {
         tabFeatures: "功能",
         tabPermissions: "权限",
         activeCountFormat: "已安装 %1$d 项，共 %2$d 项",
-        monitorAllOffNote: "全部关闭后，监视器会从面板和菜单栏中消失。",
+        monitorAllOffNote: "全部关闭后，系统监视器会从面板和菜单栏中消失。",
         titleDockClick: "程序坞点按",
         titleMouseNavigation: "侧键",
         titleMusicBlock: "「音乐」App 拦截",
@@ -1491,9 +1564,9 @@ extension FeatureHubStrings {
         descURLCleaner: "拷贝的链接自动去除跟踪参数",
         descMixer: "各 App 音量、置顶和自定义排序",
         descSoundOutputSwitcher: "用快捷键切换声音输出",
-         descAudioPriority: "自动使用您首选的音频设备",
+         descAudioPriority: "自动使用你首选的音频设备",
         descMicMute: "随时随地静音麦克风",
-        descMusicBlock: "阻止检测到的媒体键触发音乐启动",
+        descMusicBlock: "阻止检测到的媒体键启动「音乐」App",
         descKeepAwake: "需要时让 Mac 保持唤醒",
         descExtraBrightness: "XDR 显示屏的额外亮度",
         descQuickLauncher: "装着常用工具的浮动面板",
@@ -1513,6 +1586,8 @@ extension FeatureHubStrings {
         footerNote: "卸载不会删除任何数据：功能只是从 App 中消失并不再加载。随时重新安装，一切都会原样恢复。",
         restartNote: "本次会话中卸载的功能在 App 重启前仍会驻留。立即重启即可把它们从内存中卸下。",
         restartButton: "立即重启",
+        installButton: "安装",
+        uninstallButton: "卸载",
         installAllButton: "全部安装",
         uninstallAllButton: "全部卸载",
         presetsTitle: "从一个套装开始",
@@ -1520,9 +1595,9 @@ extension FeatureHubStrings {
         presetEssentialName: "基础",
         presetEssentialDesc: "音量混音器、系统监视器和保持唤醒。",
         presetWindowsName: "窗口",
-        presetWindowsDesc: "App 切换器、窗口布局和程序坞功能。",
+        presetWindowsDesc: "窗口切换器、窗口布局和程序坞功能。",
         presetBatteryName: "电池与安静",
-        presetBatteryDesc: "只保留电池、内存和处理器的轻量监视器。没有任何输入监听。",
+        presetBatteryDesc: "只保留电池、内存和处理器的轻量系统监视器。没有任何输入监听。",
         presetApplyButton: "使用套装",
         presetConfirmFormat: "安装“%1$@”套装并卸载其余功能？不会删除任何内容，一键即可全部恢复。",
         presetConfirmApply: "使用套装",
@@ -1542,7 +1617,11 @@ extension FeatureHubStrings {
         notchUninstallTitle: "卸载 Dynamic Island",
         notchUninstallMessageFormat: "以下扩展只能在 Dynamic Island 中使用：%@。要一并卸载吗？不会删除任何内容，一键即可全部恢复。",
         notchUninstallWithExtensions: "一并卸载扩展",
-        notchUninstallKeepExtensions: "保留扩展"
+        notchUninstallKeepExtensions: "保留扩展",
+        neverUsedTitle: "从未开启",
+        neverUsedMessageFormat: "这些功能已安装，但从未开启：%@。卸载后，面板和设置会更简短。不会删除任何数据，每项都能一键恢复。",
+        neverUsedUninstall: "卸载这些",
+        neverUsedKeep: "保留"
     )
 
     static let zhTW = FeatureHubStrings(
@@ -1629,6 +1708,8 @@ extension FeatureHubStrings {
         footerNote: "解除安裝不會刪除任何資料：功能只是從 App 中消失並不再載入。隨時重新安裝，一切都會原樣恢復。",
         restartNote: "本次工作階段解除安裝的功能在 App 重新啟動前仍會駐留。立即重新啟動即可將它們從記憶體卸下。",
         restartButton: "立即重新啟動",
+        installButton: "安裝",
+        uninstallButton: "解除安裝",
         installAllButton: "全部安裝",
         uninstallAllButton: "全部解除安裝",
         presetsTitle: "從一個套組開始",
@@ -1636,7 +1717,7 @@ extension FeatureHubStrings {
         presetEssentialName: "基本",
         presetEssentialDesc: "音量混音器、系統監視器與保持喚醒。",
         presetWindowsName: "視窗",
-        presetWindowsDesc: "App 切換器、視窗排列與 Dock 功能。",
+        presetWindowsDesc: "視窗切換器、視窗排列與 Dock 功能。",
         presetBatteryName: "電池與安靜",
         presetBatteryDesc: "只留電池、記憶體與處理器的精簡監視器。沒有任何輸入監聽。",
         presetApplyButton: "套用",
@@ -1658,7 +1739,11 @@ extension FeatureHubStrings {
         notchUninstallTitle: "解除安裝 Dynamic Island",
         notchUninstallMessageFormat: "以下延伸功能只能在 Dynamic Island 中使用：%@。要一併解除安裝嗎？不會刪除任何內容，一鍵即可全部復原。",
         notchUninstallWithExtensions: "一併解除安裝延伸功能",
-        notchUninstallKeepExtensions: "保留延伸功能"
+        notchUninstallKeepExtensions: "保留延伸功能",
+        neverUsedTitle: "從未開啟",
+        neverUsedMessageFormat: "這些功能已安裝，但從未開啟：%@。解除安裝後，面板和設定會更簡短。不會刪除任何資料，每項都能一鍵恢復。",
+        neverUsedUninstall: "解除安裝這些",
+        neverUsedKeep: "保留"
     )
 
     static let zhHK = FeatureHubStrings(
@@ -1745,6 +1830,8 @@ extension FeatureHubStrings {
         footerNote: "解除安裝不會刪除任何資料：功能只是從 App 消失並不再載入。隨時重新安裝，一切都會原樣恢復。",
         restartNote: "本次工作階段解除安裝的功能在 App 重新啟動前仍會駐留。立即重新啟動即可將它們從記憶體卸下。",
         restartButton: "立即重新啟動",
+        installButton: "安裝",
+        uninstallButton: "解除安裝",
         installAllButton: "全部安裝",
         uninstallAllButton: "全部解除安裝",
         presetsTitle: "從一個套組開始",
@@ -1752,7 +1839,7 @@ extension FeatureHubStrings {
         presetEssentialName: "基本",
         presetEssentialDesc: "音量混音器、系統監視器與保持喚醒。",
         presetWindowsName: "視窗",
-        presetWindowsDesc: "App 切換器、視窗排列與 Dock 功能。",
+        presetWindowsDesc: "視窗切換器、視窗排列與 Dock 功能。",
         presetBatteryName: "電池與安靜",
         presetBatteryDesc: "只留電池、記憶體與處理器的精簡監視器。沒有任何輸入監聽。",
         presetApplyButton: "套用",
@@ -1774,7 +1861,11 @@ extension FeatureHubStrings {
         notchUninstallTitle: "解除安裝 Dynamic Island",
         notchUninstallMessageFormat: "以下延伸功能只能在 Dynamic Island 中使用：%@。要一併解除安裝嗎？不會刪除任何內容，一鍵即可全部復原。",
         notchUninstallWithExtensions: "一併解除安裝延伸功能",
-        notchUninstallKeepExtensions: "保留延伸功能"
+        notchUninstallKeepExtensions: "保留延伸功能",
+        neverUsedTitle: "從未開啟",
+        neverUsedMessageFormat: "這些功能已安裝，但從未開啟：%@。解除安裝後，面板和設定會更簡短。不會刪除任何資料，每項都可以一鍵恢復。",
+        neverUsedUninstall: "解除安裝這些",
+        neverUsedKeep: "保留"
     )
 }
 
@@ -1864,6 +1955,8 @@ extension FeatureHubStrings {
         footerNote: "Видалення нічого не стирає: функція просто зникає з програми та перестає завантажуватися. Встановіть її знову, і все повернеться як було.",
         restartNote: "Функції, видалені в цій сесії, залишаються в пам’яті до перезапуску програми. Перезапустіть, щоб вивантажити їх зараз.",
         restartButton: "Перезапустити зараз",
+        installButton: "Встановити",
+        uninstallButton: "Видалити",
         installAllButton: "Встановити все",
         uninstallAllButton: "Видалити все",
         presetsTitle: "Почніть з набору",
@@ -1871,7 +1964,7 @@ extension FeatureHubStrings {
         presetEssentialName: "Основне",
         presetEssentialDesc: "Мікшер гучності, системний монітор та режим без сну.",
         presetWindowsName: "Вікна",
-        presetWindowsDesc: "Перемикач програм, розкладка вікон та функції Dock.",
+        presetWindowsDesc: "Перемикач вікон, розкладка вікон та функції Dock.",
         presetBatteryName: "Акумулятор та тиша",
         presetBatteryDesc: "Компактний монітор з акумулятором, пам’яттю та процесором. Нічого не відстежує введення.",
         presetApplyButton: "Застосувати",
@@ -1893,6 +1986,10 @@ extension FeatureHubStrings {
         notchUninstallTitle: "Видалити Dynamic Island",
         notchUninstallMessageFormat: "Наступні розширення працюють лише з Dynamic Island: %@. Видалити їх разом? Нічого не стирається, усе повертається одним клацанням.",
         notchUninstallWithExtensions: "Видалити розширення разом",
-        notchUninstallKeepExtensions: "Залишити розширення"
+        notchUninstallKeepExtensions: "Залишити розширення",
+        neverUsedTitle: "Жодного разу не вмикалися",
+        neverUsedMessageFormat: "Ці функції встановлені, але жодного разу не вмикалися: %@. Якщо їх видалити, панель і налаштування стануть коротшими. Нічого не стирається, і будь-яку можна повернути одним клацанням.",
+        neverUsedUninstall: "Видалити їх",
+        neverUsedKeep: "Залишити"
     )
 }

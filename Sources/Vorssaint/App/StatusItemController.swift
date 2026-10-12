@@ -36,6 +36,7 @@ final class StatusItemController {
     /// it. Recovery leaves such an item alone.
     private(set) var mainItemHiddenByChoice = false
     private var heldMicBadgeActive: Bool?
+    private var heldKeepAwakeSignal: Bool?
     /// A settings reply already waiting for the next turn of the run loop.
     private var settingsSyncScheduled = false
     /// How many readings in a row each metric has failed to render, so an
@@ -59,7 +60,6 @@ final class StatusItemController {
     private static let mainAutosaveName = "VorssaintMenuBarItem"
     private static let metricAutosavePrefix = "VorssaintMetric"
     private static let clipboardPreviewAutosaveName = "VorssaintClipboardPreview"
-    private static let maxPlacementGeneration = 10_000
     private static let emptyStatusImage = NSImage()
 
     /// One separate menu bar item: a metric, or a metric with its temperature
@@ -314,17 +314,34 @@ final class StatusItemController {
         heldMicBadgeActive ?? currentMicBadgeActive
     }
 
-    /// Keeps the variable-width mic badge unchanged while any status item is
-    /// anchoring an open panel. The current state is rendered after it closes.
+    private var currentKeepAwakeSignal: Bool {
+        MenuBarSpacingSupport.keepAwakeSignals(active: KeepAwakeManager.shared.isActive,
+                                               tint: .current, style: .current)
+    }
+
+    /// Whether a running Keep Awake session brings back the glyph the
+    /// metrics option hides. Held with the mic badge while a panel is open.
+    private var keepAwakeSignal: Bool {
+        heldKeepAwakeSignal ?? currentKeepAwakeSignal
+    }
+
+    /// Keeps the variable-width mic badge, and whether Keep Awake brings the
+    /// hidden glyph back, unchanged while any status item is anchoring an
+    /// open panel: either one would resize or show an item and move the
+    /// panel with it. The current state is rendered after it closes.
     func setMicBadgeHeld(_ held: Bool) {
         if held {
             guard heldMicBadgeActive == nil else { return }
             heldMicBadgeActive = currentMicBadgeActive
+            heldKeepAwakeSignal = currentKeepAwakeSignal
             return
         }
         guard heldMicBadgeActive != nil else { return }
         heldMicBadgeActive = nil
-        updateIconAppearance()
+        heldKeepAwakeSignal = nil
+        // The title's leading space follows the glyph, so the whole refresh
+        // runs, not just the icon; refresh() ends with updateIconAppearance().
+        refresh()
     }
 
     /// Reflects keep-awake state and an available update in the icon. Updates
@@ -354,7 +371,7 @@ final class StatusItemController {
             separateMetrics: separateMetrics,
             metricsEnabled: MenuBarMetric.anyEnabled(in: defaults),
             renderedTitleLength: button.attributedTitle.length,
-            mustShowForSignal: signal)
+            mustShowForSignal: signal || keepAwakeSignal)
         // In the separate-items mode the metrics are their own clickable
         // items, so hiding means the whole main item steps aside instead of
         // just its image (which is all that item has). With Dynamic Island
@@ -365,7 +382,7 @@ final class StatusItemController {
                 separateMetrics: separateMetrics,
                 metricItemsShown: renderedMetricItemCount,
                 renderedTitleLength: button.attributedTitle.length,
-                mustShowForSignal: signal)
+                mustShowForSignal: signal || keepAwakeSignal)
         mainItemHiddenByChoice = mainItemHidden
         let keepAwakeActive = KeepAwakeManager.shared.isActive
 
@@ -374,7 +391,7 @@ final class StatusItemController {
         // image is only touched when some ingredient actually changed.
         let stateKey = [String(hidden), String(mainItemHidden), String(updateAvailable),
                         String(keepAwakeActive), KeepAwakeIconTint.current.rawValue,
-                        KeepAwakeActiveIcon.current.rawValue,
+                        KeepAwakeActiveIcon.current.rawValue, BlackHoleGlyph.chosenSymbolName,
                         String(micBadgeActive)].joined(separator: "|")
         guard stateKey != lastIconStateKey else { return }
         lastIconStateKey = stateKey
@@ -517,7 +534,7 @@ final class StatusItemController {
                     separateMetrics: separateMetrics,
                     metricsEnabled: !metrics.isEmpty,
                     renderedTitleLength: 1,
-                    mustShowForSignal: signal)
+                    mustShowForSignal: signal || keepAwakeSignal)
             let full = NSMutableAttributedString(string: glyphHidden ? "" : " ")
             full.append(title)
             let stacked = full.string.contains("\n")
@@ -864,6 +881,7 @@ final class StatusItemController {
 
 /// The official mark, bundled as a template image so the idle state adapts to
 /// light and dark menu bars. Active states can use real colors for attention.
+/// A system symbol named in the menu bar settings can take the mark's place.
 enum BlackHoleGlyph {
     /// Logical size of the glyph in the menu bar, in points. Wide because the
     /// mark is ~1.97:1 and sized from its height. Tools/MakeIcon.swift writes
@@ -893,9 +911,29 @@ enum BlackHoleGlyph {
         return image
     }()
 
+    /// The symbol named in the menu bar settings, empty for the mark.
+    static var chosenSymbolName: String {
+        Defaults.sanitizedMenuBarIconSymbol(
+            UserDefaults.standard.string(forKey: DefaultsKey.menuBarIconSymbol))
+    }
+
+    /// What every state starts from: the chosen symbol, or the bundled mark
+    /// when none is chosen or this Mac has no symbol by that name.
+    static func mark(symbolName: String = BlackHoleGlyph.chosenSymbolName) -> NSImage? {
+        customMark(named: symbolName) ?? base
+    }
+
+    /// A system symbol on the canvas the active symbols use, or nil when
+    /// this Mac has no symbol by that name: a typo, or a name from a newer
+    /// macOS that came with a settings backup.
+    static func customMark(named name: String) -> NSImage? {
+        guard !name.isEmpty else { return nil }
+        return fixedSizeSymbol(named: name)
+    }
+
     static func image(active: Bool) -> NSImage? {
         let tint = KeepAwakeIconTint.current
-        guard active else { return base ?? fallback(active: false) }
+        guard active else { return mark() ?? fallback(active: false) }
         return activeImage(style: .current, tint: tint)
     }
 
@@ -905,7 +943,7 @@ enum BlackHoleGlyph {
         if let symbolName = style.systemSymbolName {
             source = fixedSizeSymbol(named: symbolName, drop: style.menuBarDrop)
         } else {
-            source = base
+            source = mark()
         }
         guard let source else { return fallback(active: tint != .none) }
         guard let color = color(for: tint) else {
@@ -985,8 +1023,8 @@ enum BlackHoleGlyph {
     /// A blue, full-strength glyph used to flag an available update. Non-template
     /// (a real color), drawn by masking blue into the glyph's shape.
     static func attentionImage() -> NSImage? {
-        guard let base else { return fallback(active: true) }
-        return tintedImage(base, color: .systemBlue) ?? fallback(active: true)
+        guard let glyph = mark() else { return fallback(active: true) }
+        return tintedImage(glyph, color: .systemBlue) ?? fallback(active: true)
     }
 
     /// The given state image with a red slashed microphone beside it, shown

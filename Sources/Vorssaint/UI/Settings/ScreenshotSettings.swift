@@ -24,6 +24,7 @@ struct ScreenshotCaptureSettings: View {
     @AppStorage(DefaultsKey.screenshotFileNumberNext) private var nextNumber = 1
     @AppStorage(DefaultsKey.screenshotIncludePointer) private var includePointer = false
     @AppStorage(DefaultsKey.screenshotShowLastRegion) private var showLastRegion = true
+    @AppStorage(DefaultsKey.screenshotHighlightWindows) private var highlightWindows = true
     @AppStorage(DefaultsKey.screenshotLoupeStartsOn) private var loupeStartsOn = false
     @AppStorage(DefaultsKey.screenshotLoupeRememberZoom) private var rememberLoupeZoom = false
     @AppStorage(DefaultsKey.screenshotLoupeDefaultZoom) private var loupeDefaultZoom = 1.0
@@ -36,9 +37,17 @@ struct ScreenshotCaptureSettings: View {
         ScreenshotSupport.Tool.defaultOrderStorage
     @AppStorage(DefaultsKey.screenshotToolShortcutsEnabled) private var toolShortcutsEnabled = true
     @AppStorage(DefaultsKey.screenshotCopyToClipboard) private var copyToClipboard = false
+    @AppStorage(DefaultsKey.screenshotAddToShelf) private var addToShelf = false
+    @AppStorage(DefaultsKey.shelfEnabled) private var shelfEnabled = false
+    @AppStorage(AppFeature.shelf.availabilityKey) private var shelfAvailable = false
     @AppStorage(DefaultsKey.screenshotPreviewPosition) private var previewPositionRaw = ""
     @AppStorage(DefaultsKey.screenshotPreviewTakesFocus) private var previewTakesFocus = true
+    @AppStorage(DefaultsKey.screenshotPreviewEnabled) private var previewEnabled = true
+    @AppStorage(DefaultsKey.screenshotPreviewDuration) private var previewDuration =
+        ScreenshotSupport.defaultConfirmationPreviewDuration
     @AppStorage(DefaultsKey.screenshotSharingEnabled) private var sharingEnabled = true
+    @AppStorage(DefaultsKey.screenshotUploadShortcutEnabled) private var uploadShortcutEnabled = false
+    @AppStorage(DefaultsKey.screenshotUploadDuration) private var uploadDuration = ScreenshotShareDuration.oneHour.rawValue
     @State private var showingSharedLinks = false
     @State private var showingSharePrivacy = false
 
@@ -134,6 +143,10 @@ struct ScreenshotCaptureSettings: View {
                 .pickerStyle(.segmented)
                 Toggle(strings.pointerToggle, isOn: $includePointer)
                 Toggle(strings.lastRegionToggle, isOn: $showLastRegion)
+                Toggle(strings.highlightWindowsToggle, isOn: $highlightWindows)
+                Text(strings.highlightWindowsCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 DisclosureGroup {
                     Toggle(strings.loupeStartsOnToggle, isOn: $loupeStartsOn)
                     Toggle(strings.loupeRememberZoomToggle, isOn: $rememberLoupeZoom)
@@ -168,6 +181,11 @@ struct ScreenshotCaptureSettings: View {
                 Text(strings.autoCopyCaption)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Toggle(strings.addToShelfToggle, isOn: addToShelfBinding)
+                    .disabled(!shelfIsOn)
+                Text(strings.addToShelfCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 folderRow
                 subfolderRow
                 fileNameRow
@@ -187,7 +205,26 @@ struct ScreenshotCaptureSettings: View {
 
             Section {
                 Toggle(strings.shareEnabledToggle, isOn: $sharingEnabled)
+                    .onChange(of: sharingEnabled) { _, _ in service.syncWithPreferences() }
                 if sharingEnabled {
+                    Toggle(strings.uploadLastCapture, isOn: $uploadShortcutEnabled)
+                        .onChange(of: uploadShortcutEnabled) { _, _ in service.syncWithPreferences() }
+                    ShortcutPreferenceRow(role: .screenshotUpload,
+                                          isEnabled: uploadShortcutEnabled) {
+                        service.syncWithPreferences()
+                    }
+                    Picker(strings.uploadExpiry, selection: $uploadDuration) {
+                        ForEach(ScreenshotShareDuration.allCases) { duration in
+                            Text(duration.title(strings)).tag(duration.rawValue)
+                        }
+                    }
+                    if uploadShortcutEnabled {
+                        if service.uploadShortcutRegistrationFailed {
+                            Text(l10n.s.shortcutUnavailable)
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                    }
                     Text(strings.shareCaption)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -242,6 +279,20 @@ struct ScreenshotCaptureSettings: View {
         ScreenshotDefaultAction(rawValue: defaultActionRaw) ?? .none
     }
 
+    private var shelfIsOn: Bool {
+        shelfEnabled && shelfAvailable
+    }
+
+    /// Reads off while the shelf is off, since no capture reaches it then.
+    /// The choice itself is kept for when the shelf comes back.
+    private var addToShelfBinding: Binding<Bool> {
+        Binding {
+            addToShelf && shelfIsOn
+        } set: { isOn in
+            addToShelf = isOn
+        }
+    }
+
     private var defaultActionRow: some View {
         VStack(alignment: .leading, spacing: 4) {
             ScreenshotDefaultActionPicker(strings: strings, selection: $defaultActionRaw)
@@ -250,6 +301,31 @@ struct ScreenshotCaptureSettings: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            if usesAutomaticConfirmationPreview {
+                Toggle(strings.confirmationPreviewToggle, isOn: $previewEnabled)
+                if previewEnabled {
+                    Picker(strings.confirmationPreviewDurationLabel, selection: $previewDuration) {
+                        ForEach(ScreenshotSupport.confirmationPreviewDurations, id: \.self) { seconds in
+                            if seconds == 0 {
+                                Text(strings.confirmationPreviewUntilDismissed).tag(0)
+                            } else {
+                                Text(String(format: strings.delaySecondsFormat, seconds)).tag(seconds)
+                            }
+                        }
+                    }
+                }
+                Text(strings.confirmationPreviewCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var usesAutomaticConfirmationPreview: Bool {
+        guard let action = ScreenshotDefaultAction(rawValue: defaultActionRaw) else { return false }
+        switch action {
+        case .save, .saveAndCopy, .copy: return true
+        case .none, .edit: return false
         }
     }
 

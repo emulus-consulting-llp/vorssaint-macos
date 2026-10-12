@@ -583,6 +583,14 @@ final class ShelfTileView: NSView, NSDraggingSource {
         }
         menu.addItem(openWith)
 
+        if AppFeature.screenshot.isAvailable, ShelfInteractionSupport.editableImage(in: urls) != nil {
+            let edit = NSMenuItem(title: FeatureStrings.screenshot(L10n.shared.language).editButton,
+                                  action: #selector(editImage),
+                                  keyEquivalent: "")
+            edit.target = self
+            menu.addItem(edit)
+        }
+
         menu.addItem(sharePresenter.shareMenuItem(for: urls, title: strings.shelfActionShare))
         menu.addItem(.separator())
 
@@ -650,6 +658,12 @@ final class ShelfTileView: NSView, NSDraggingSource {
                                 configuration: configuration)
     }
 
+    @objc private func editImage() {
+        guard let url = ShelfInteractionSupport.editableImage(
+            in: ShelfService.shared.fileURLsForActions(startingAt: item)) else { return }
+        ScreenshotService.shared.editImage(at: url)
+    }
+
     @objc private func revealFiles() {
         let urls = ShelfService.shared.fileURLsForActions(startingAt: item)
         guard !urls.isEmpty else { return }
@@ -709,6 +723,7 @@ final class ShelfTileView: NSView, NSDraggingSource {
         // dragged tiles out of the shelf. A cancelled drag leaves them.
         DispatchQueue.main.async {
             ShelfService.shared.completeInternalDrag(dropAccepted: operation != [])
+            ShelfService.shared.absorbOwnDrag()
         }
     }
 
