@@ -19,11 +19,11 @@ verified statements about current providers, macOS releases, or this fork.
 - `design/`: prototype design exports, including bundled runtime code.
 - Nested Git metadata and build output.
 
-The complete original directory remains locally at `../../temp-ai-usage-bar`,
-ignored by the parent repository. The temporary working folder and its local
-backups were removed after the integration work was completed. The original
-prototype directory is not restored by cloning GitHub.
-Keep a separate machine backup if the full prototype is needed elsewhere.
+The original `temp-ai-usage-bar` directory, including its nested temporary
+workspace, was removed during cleanup on 2026-10-12 after verifying that all
+20 preserved files matched this reference. The earlier temporary working folder
+and its local backups were also removed. Cloning GitHub restores this selected
+source reference, not the complete prototype or its deliberately omitted files.
 
 Do not run the prototype's install scripts as part of fork setup. Implement the
 desired behavior in the main app's existing AI usage services and UI. Use original
