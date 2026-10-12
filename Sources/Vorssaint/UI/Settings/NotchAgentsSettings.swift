@@ -9,6 +9,8 @@ struct NotchAgentsSettingsControls: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var usage = AgentUsageService.shared
     @AppStorage(DefaultsKey.notchAgentsClaude) private var claude = true
+    @AppStorage(DefaultsKey.notchAgentsGemini) private var gemini = false
+    @AppStorage(DefaultsKey.notchAgentsAgy) private var agy = false
     @AppStorage(DefaultsKey.notchAgentsCodex) private var codex = true
     @AppStorage(DefaultsKey.notchAgentsOpenCode) private var opencode = true
     @AppStorage(DefaultsKey.notchAgentsCopilot) private var copilot = true
@@ -31,6 +33,7 @@ struct NotchAgentsSettingsControls: View {
     @State private var claudeAppFileCheck: Date?
 
     private var text: NotchAgentStrings { FeatureStrings.notchAgents(l10n.language) }
+    private var quotaText: NotchAgentQuotaStrings { NotchAgentQuotaStrings(language: l10n.language) }
     private var locale: Locale { l10n.language.formattingLocale() }
 
     private var orderedCards: [NotchAgentCard] {
@@ -46,6 +49,8 @@ struct NotchAgentsSettingsControls: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             providerRow(.claude, isOn: $claude)
+            providerRow(.gemini, isOn: $gemini)
+            providerRow(.agy, isOn: $agy)
             providerRow(.codex, isOn: $codex)
             providerRow(.opencode, isOn: $opencode)
             providerRow(.copilot, isOn: $copilot)
@@ -87,7 +92,7 @@ struct NotchAgentsSettingsControls: View {
             Divider()
             Text(text.liveTitle).font(.subheadline.weight(.medium))
             switchRow("waveform.path.ecg", text.liveActivity, isOn: $liveActivity)
-            if liveActivity {
+            if liveActivity && (claude || codex || opencode || copilot) {
                 SettingsMenuRow(symbol: "camera.metering.center.weighted", title: text.readout, selection: $readout) {
                     ForEach(NotchAgentReadout.allCases) { option in
                         Text(text.readout(option)).tag(option.rawValue)
@@ -152,7 +157,7 @@ struct NotchAgentsSettingsControls: View {
         .onChange(of: claude) { _, on in if on { findClaudeApp() } }
         // Cards and agents set the page's height, and the live reading the
         // closed island's width, which the island follows.
-        .onChange(of: [cardOrder, hiddenCards, String(claude), String(codex), String(opencode), String(copilot),
+        .onChange(of: [cardOrder, hiddenCards, String(claude), String(gemini), String(agy), String(codex), String(opencode), String(copilot),
                        String(liveActivity), readout, limitDisplay, limitFocus]) { _, _ in
             NotchService.shared.syncWithPreferences()
         }
@@ -218,14 +223,15 @@ struct NotchAgentsSettingsControls: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(provider.displayName)
-                Text(roots[provider] == true ? text.found : text.notFound)
+                Text(provider == .gemini ? quotaText.geminiPool : provider == .agy ? quotaText.agyPool :
+                    roots[provider] == true ? text.found : text.notFound)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 12)
             // One agent stays on; turning the section off stops all.
             Toggle(provider.displayName, isOn: isOn).labelsHidden().toggleStyle(.switch)
-                .disabled(isOn.wrappedValue && [claude, codex, opencode, copilot].filter { $0 }.count <= 1)
+                .disabled(isOn.wrappedValue && [claude, gemini, agy, codex, opencode, copilot].filter { $0 }.count <= 1)
         }
     }
 

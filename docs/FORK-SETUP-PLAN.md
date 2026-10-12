@@ -108,6 +108,8 @@ Implemented and checked locally:
 - Checked new documentation links and staged whitespace. Application source,
   resources, tests and build scripts remain unchanged; no app tests were needed.
 
-Saving the setup commit to `origin/ai-usage-tracker` and checking its remote commit
-ID are the final operational steps. History alignment, the newer community update,
-and feature implementation belong to the next development stage described above.
+The setup was saved to `origin/ai-usage-tracker` and its remote commit verified.
+Subsequent history alignment and the newer community update are complete; both
+`community` and `personal/ai-usage` are saved to the personal fork. See
+[the revised feature plan](AI-USAGE-NEXT-STEPS.md) for implementation and validation
+of the Gemini/Antigravity quota cards.

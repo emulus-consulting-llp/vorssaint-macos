@@ -404,6 +404,15 @@ struct AgentPace: Equatable {
 }
 
 enum AgentLimitSupport {
+    /// Expired remote quota needs a new observation, not an assumed full allowance.
+    static func displayWindows(_ limits: AgentLimits?, now: Date) -> [AgentLimitWindow] {
+        guard let limits else { return [] }
+        if !limits.provider.supportsAnalytics {
+            return limits.windows.filter { ($0.resetsAt ?? .distantPast) > now }
+        }
+        return limits.windows.map { current($0, at: now) }
+    }
+
     /// A window that renewed since it was read has nothing spent on it yet.
     static func current(_ window: AgentLimitWindow, at now: Date) -> AgentLimitWindow {
         guard let resets = window.resetsAt, resets <= now else { return window }
@@ -422,7 +431,7 @@ enum AgentLimitSupport {
     /// The window that will stop work first: the most spent, and on a tie the
     /// one renewing last.
     static func binding(_ limits: AgentLimits?, now: Date) -> AgentLimitWindow? {
-        limits?.windows.map { current($0, at: now) }.max {
+        displayWindows(limits, now: now).max {
             $0.usedPercent != $1.usedPercent ? $0.usedPercent < $1.usedPercent
                 : ($0.resetsAt ?? .distantPast) < ($1.resetsAt ?? .distantPast)
         }

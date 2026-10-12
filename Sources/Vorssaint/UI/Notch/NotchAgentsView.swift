@@ -13,6 +13,8 @@ struct NotchAgentsView: View {
     @AppStorage(DefaultsKey.notchAgentsCardOrder) private var cardOrder = ""
     @AppStorage(DefaultsKey.notchAgentsHiddenCards) private var hiddenCards = ""
     @AppStorage(DefaultsKey.notchAgentsClaude) private var claude = true
+    @AppStorage(DefaultsKey.notchAgentsGemini) private var gemini = false
+    @AppStorage(DefaultsKey.notchAgentsAgy) private var agy = false
     @AppStorage(DefaultsKey.notchAgentsCodex) private var codex = true
     @AppStorage(DefaultsKey.notchAgentsOpenCode) private var opencode = true
     @AppStorage(DefaultsKey.notchAgentsCopilot) private var copilot = true
@@ -20,11 +22,15 @@ struct NotchAgentsView: View {
     private var text: NotchAgentStrings { FeatureStrings.notchAgents(l10n.language) }
     private var chosenPeriod: AgentPeriod { AgentPeriod(rawValue: period) ?? .today }
 
-    /// Only agents that left something on this Mac get cards.
+    /// Existing agents need local evidence; opted-in quota pools can explain missing readings.
     private var providers: [AgentProvider] {
-        [claude ? AgentProvider.claude : nil, codex ? .codex : nil, opencode ? .opencode : nil, copilot ? .copilot : nil].compactMap { $0 }
-            .filter(usage.snapshot.seen.contains)
+        NotchAgentSupport.visibleProviders(enabled:
+            [claude ? AgentProvider.claude : nil, gemini ? .gemini : nil, agy ? .agy : nil,
+             codex ? .codex : nil, opencode ? .opencode : nil, copilot ? .copilot : nil].compactMap { $0 },
+            seen: usage.snapshot.seen)
     }
+
+    private var analyticsProviders: [AgentProvider] { providers.filter(\.supportsAnalytics) }
 
     private var rows: [[NotchAgentTile]] {
         // The strings are read here so a change in Settings redraws the page.
@@ -81,14 +87,16 @@ struct NotchAgentsView: View {
         case .limits:
             if let provider = tile.provider {
                 NotchAgentLimitsCard(provider: provider, snapshot: snapshot, now: now,
-                                     display: NotchAgentLimitDisplay(rawValue: display) ?? .remaining, text: text)
+                                     display: NotchAgentLimitDisplay(rawValue: display) ?? .remaining, text: text,
+                                     quotaText: NotchAgentQuotaStrings(language: l10n.language),
+                                     quotaState: usage.quotaState)
             }
         case .spend:
-            NotchAgentSpendCard(snapshot: snapshot, providers: providers, period: $period, text: text)
+            NotchAgentSpendCard(snapshot: snapshot, providers: analyticsProviders, period: $period, text: text)
         case .live:
-            NotchAgentLiveCard(snapshot: snapshot, providers: providers, text: text)
+            NotchAgentLiveCard(snapshot: snapshot, providers: analyticsProviders, text: text)
         case .trend:
-            NotchAgentTrendCard(snapshot: snapshot, providers: providers, period: shown, text: text)
+            NotchAgentTrendCard(snapshot: snapshot, providers: analyticsProviders, period: shown, text: text)
         case .models:
             NotchAgentShareCard(title: text.modelsCard, symbol: NotchAgentCard.models.symbol,
                                 shares: snapshot.usage(shown).models, byCost: snapshot.usage(shown).fullyPriced, text: text)
@@ -126,18 +134,24 @@ private struct NotchAgentLimitsCard: View {
     let now: Date
     let display: NotchAgentLimitDisplay
     let text: NotchAgentStrings
+    let quotaText: NotchAgentQuotaStrings
+    let quotaState: AgentAntigravityUsage.State
     @Environment(\.locale) private var locale
 
     /// A reading the Claude app saved a while ago: still the latest known,
     /// shown quieter until the app checks again.
     private var stale: Bool {
-        guard let limits = snapshot.limits[provider], limits.source == .claudeApp else { return false }
-        return now.timeIntervalSince(limits.observedAt) >= AgentClaudeAppUsage.freshness
+        guard let limits = snapshot.limits[provider] else { return false }
+        if !provider.supportsAnalytics {
+            return quotaState != .live || now.timeIntervalSince(limits.observedAt) >= AgentAntigravityUsage.freshness
+        }
+        return limits.source == .claudeApp && now.timeIntervalSince(limits.observedAt) >= AgentClaudeAppUsage.freshness
     }
 
     /// Two rows fit: the session and whichever longer window binds first.
     private var windows: [AgentLimitWindow] {
-        let all = (snapshot.limits[provider]?.windows ?? []).map { AgentLimitSupport.current($0, at: now) }
+        let all = provider.supportsAnalytics ? AgentLimitSupport.displayWindows(snapshot.limits[provider], now: now)
+            : (snapshot.limits[provider]?.windows ?? [])
         let session = all.first { $0.kind == .session }
         let longer = all.filter { $0.kind != .session }.max { $0.usedPercent < $1.usedPercent }
         return [session, longer].compactMap { $0 }
@@ -150,15 +164,36 @@ private struct NotchAgentLimitsCard: View {
                 NotchAgentCardHeader(title: provider.displayName, symbol: provider.symbol, tint: provider.tint,
                                      provider: provider) {
                     HStack(spacing: 4) {
+                        if !provider.supportsAnalytics, stale {
+                            NotchAgentChip(text: quotaText.cached, tint: .secondary)
+                        }
                         if let plan = snapshot.plans[provider] { NotchAgentChip(text: plan.name, tint: provider.tint) }
                         if !snapshot.working(provider).isEmpty { NotchAgentPulse(tint: provider.tint, size: 5) }
                     }
                 }
                 if windows.isEmpty {
-                    estimate
+                    if !provider.supportsAnalytics {
+                        Text(quotaState == .loading ? text.loading :
+                            snapshot.limits[provider] == nil ? quotaText.unavailable : quotaText.waiting)
+                            .font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(2)
+                    } else { estimate }
                 } else {
                     VStack(spacing: 5) {
-                        ForEach(windows) { row($0) }
+                        ForEach(windows) { window in
+                            if !provider.supportsAnalytics, (window.resetsAt ?? .distantPast) <= now {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 5) {
+                                        Text(label(window)).font(.system(size: 10, weight: .medium))
+                                        Text(quotaText.waiting).font(.system(size: 9.5)).lineLimit(1)
+                                        Spacer(minLength: 2)
+                                        Text("—").font(.system(size: 12, weight: .semibold, design: .rounded))
+                                    }
+                                    .foregroundStyle(.secondary)
+                                    Color.clear.frame(height: 4)
+                                }
+                                .help(quotaText.waiting)
+                            } else { row(window) }
+                        }
                     }
                     .opacity(stale ? 0.6 : 1)
                     if windows.count == 1 { caption }
@@ -166,6 +201,13 @@ private struct NotchAgentLimitsCard: View {
             }
         }
         .accessibilityElement(children: .combine)
+        .help(!provider.supportsAnalytics ? quotaHelp : "")
+    }
+
+    private var quotaHelp: String {
+        let pool = provider == .gemini ? quotaText.geminiPool : quotaText.agyPool
+        guard let observed = snapshot.limits[provider]?.observedAt else { return pool }
+        return pool + " · " + text.updated(observed.formatted(date: .abbreviated, time: .shortened))
     }
 
     /// How old a reading is, once it is old enough to have missed use elsewhere.

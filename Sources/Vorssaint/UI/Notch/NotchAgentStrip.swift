@@ -148,11 +148,12 @@ struct NotchAgentRestingWing: View {
                     .monospacedDigit()
                     .lineLimit(1)
             }
-        } else if let provider = AgentProvider.allCases.first(where: snapshot.seen.contains) {
+        } else if let provider = AgentProvider.allCases.first(where: { $0.supportsAnalytics && snapshot.seen.contains($0) })
+            ?? AgentProvider.allCases.first(where: snapshot.seen.contains) {
             if leading {
                 NotchAgentMark(provider: provider, size: 10)
             } else {
-                Text(AgentFormat.cost(snapshot.usage(.today).total.cost))
+                Text(provider.supportsAnalytics ? AgentFormat.cost(snapshot.usage(.today).total.cost) : "—")
                     .font(.system(size: 9, weight: .medium))
                     .monospacedDigit()
                     .lineLimit(1)

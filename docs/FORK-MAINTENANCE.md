@@ -2,7 +2,7 @@
 
 Your active personal branch is `personal/ai-usage`; `community` tracks the tested
 community baseline. `main` and `ai-usage-tracker` preserve the original history.
-The AI usage feature is being developed on the aligned personal branch.
+The [AI usage customization](AI-USAGE-QUOTAS.md) lives on the aligned personal branch.
 
 | Name | Meaning |
 | --- | --- |
@@ -28,7 +28,7 @@ For AI usage, start with `Sources/Vorssaint/Services/AgentUsage/`, the
 `NotchAgent*` views in `Sources/Vorssaint/UI/Notch/`, and
 `Sources/Vorssaint/UI/Settings/NotchAgentsSettings.swift`. Keep changes to shared
 app infrastructure as small as practical. The existing [feature plan](../plan.md)
-is historical; follow [the revised plan](AI-USAGE-NEXT-STEPS.md). the preserved
+is historical; follow [the revised plan](AI-USAGE-NEXT-STEPS.md). The preserved
 [prototype reference](ai-usage-reference/SNAPSHOT.md) is not production code.
 
 ## One-time history alignment before development
@@ -48,12 +48,12 @@ There is an exact source-equivalent anchor in the new history:
 | Upstream tip when checked | `fe24c176` |
 
 The alignment stage created `community` at `dcd7c1fb` and a new
-personal branch, `personal/ai-usage`, from that anchor. Bring over only the final
-reviewed personal files: `plan.md`, the fork setup/maintenance guides, the prototype
-reference directory, and the personal ignore entries. Do not replay the broken
-gitlink or replace newer upstream defaults wholesale. Verify application files
-still match the preserved baseline, then commit and push those new branches.
-Keep the existing `main` and `ai-usage-tracker` branches for historical reference.
+personal branch, `personal/ai-usage`, from that anchor. Only the final reviewed
+personal files were brought over: `plan.md`, the fork setup/maintenance guides,
+the prototype reference directory, and the personal ignore entries. The broken
+gitlink was excluded. Application files were verified against the preserved
+baseline before the new branches were committed and pushed. The existing `main`
+and `ai-usage-tracker` branches remain for historical reference.
 
 Alignment is complete and the new branches are saved to GitHub. Use
 `personal/ai-usage` for personal development and `community` for the clean community
@@ -135,7 +135,7 @@ An official downloaded app does not contain your private customizations.
 Direct pushes to `ai-usage-tracker` do not trigger the current CI workflow. It runs
 on pushes to `main` and on pull requests. A successful GitHub push therefore does
 not mean the app was built or tested. Setup-only documentation/reference changes
-do not require building the app. The proposed `personal/ai-usage` and `community`
+do not require building the app. The `personal/ai-usage` and `community`
 branches likewise will not trigger push CI under the existing configuration.
 
 ## Setting up another checkout

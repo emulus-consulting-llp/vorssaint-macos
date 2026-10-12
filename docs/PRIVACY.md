@@ -43,6 +43,23 @@ Playback controls prefer active playback, including a browser video when a music
 
 ## Network connections
 
+### Personal fork: optional Gemini and Antigravity quota cards
+
+The new cards are off by default. When enabled, this fork inspects running local
+Antigravity process paths, arguments and listening ports, and sends a quota-only
+request to a verified numeric loopback listener. Its per-process CSRF token stays
+in memory and is never logged or saved. Redirects are refused; self-signed HTTPS
+trust is restricted to that exact local listener. Antigravity may contact its own
+service to answer the request. No prompts or session content are requested.
+
+The reader can use the existing `~/.aiusage/gemini.json` quota cache as fallback,
+preserving its original timestamp. It does not read credentials from the endpoint
+cache or install hooks. Quota observations may join the existing local usage
+archive; tokens do not. Turning off or pausing the feature cancels requests.
+See [quota behavior and limitations](AI-USAGE-QUOTAS.md).
+
+### Community features
+
 Vorssaint opens only a few kinds of connection, and each one belongs to a visible feature.
 
 1. **The update check, automatic and easy to switch off.** So it can tell you when a newer version exists, Vorssaint asks GitHub's public releases API at `api.github.com` for this project's latest release. The request carries only a standard user agent with the app name and its version, and no account, identifier or usage data go along with it. It runs a short while after launch and now and then while the app is open. You can turn it off in Settings under About, and once it is off no update requests are made. If you choose to install an offered update, the disk image comes from GitHub.

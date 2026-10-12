@@ -11,8 +11,9 @@ import Network
 /// incrementally, and nothing is copied or sent: only counters are kept, in
 /// memory and in the app's private folder so the next launch reads only what
 /// the agents wrote meanwhile. OpenCode's stay in memory only, and its
-/// database is read again at each launch. The one request it makes fetches
-/// the public price list, when the person keeps prices up to date.
+/// database is read again at each launch. The optional public price-list request
+/// keeps prices up to date. Opt-in Gemini/Antigravity limits use a separate bounded
+/// loopback reader; no tokens, prompts or usage analytics are inferred from quotas.
 ///
 /// Reading happens on a private queue; the main thread and that queue hand
 /// work to each other asynchronously, except that a stop waits for progress
@@ -43,6 +44,13 @@ final class AgentUsageService: ObservableObject {
 
     private let queue = DispatchQueue(label: "com.vorssaint.agent-usage", qos: .utility, autoreleaseFrequency: .workItem)
     private let home = FileManager.default.homeDirectoryForCurrentUser
+    @Published private(set) var quotaState = AgentAntigravityUsage.State.unavailable
+    private let quotaReader = AgentAntigravityReader()
+    // Main-thread request identity, independent of the log reader's queue.
+    private var quotaRequest = 0
+    private var quotaInFlight = false
+    private var quotaAttempted = Date.distantPast
+    private var quotaCancellation = Cancellation()
 
     /// Lets a stop end a first read that is still going on the queue.
     private final class Cancellation {
@@ -120,6 +128,7 @@ final class AgentUsageService: ObservableObject {
             resume()
         }
         syncPrices()
+        requestQuota()
     }
 
     /// Stops reading while the island is away, as with the display asleep or
@@ -128,6 +137,7 @@ final class AgentUsageService: ObservableObject {
     func pause() {
         guard running, !paused else { return }
         paused = true
+        cancelQuota()
         timer?.invalidate()
         timer = nil
         queue.async { [self] in
@@ -153,6 +163,8 @@ final class AgentUsageService: ObservableObject {
     }
 
     func stop(keepingProgress keeps: Bool = true) {
+        cancelQuota()
+        quotaState = .unavailable
         // A first read still going stops at its next chunk, so the wait
         // below is short.
         if running { cancellation.cancel() }
@@ -210,11 +222,57 @@ final class AgentUsageService: ObservableObject {
     /// Opening the page shows the latest limits the Claude app saved.
     func pageDidAppear() {
         guard running else { return }
+        requestQuota(force: true)
         queue.async { [self] in
             guard readerSession >= 0 else { return }
             readClaudeApp(now: Date())
             checkLimits()
             publish()
+        }
+    }
+
+    private func cancelQuota() {
+        quotaRequest += 1
+        quotaCancellation.cancel()
+        quotaReader.cancel()
+        quotaInFlight = false
+        quotaAttempted = .distantPast
+    }
+
+    /// Runs on the main thread. Quota work never blocks log ingestion or UI updates.
+    private func requestQuota(force: Bool = false) {
+        guard running, !paused, providers.contains(where: { !$0.supportsAnalytics }), !quotaInFlight,
+              Date().timeIntervalSince(quotaAttempted) >= (force ? 5 : 60) else { return }
+        quotaInFlight = true
+        quotaAttempted = Date()
+        quotaRequest += 1
+        let request = quotaRequest, session = session
+        let requestCancellation = Cancellation()
+        quotaCancellation = requestCancellation
+        if quotaState == .unavailable { quotaState = .loading }
+        quotaReader.read(home: home) { [weak self] reading in
+            DispatchQueue.main.async {
+                guard let self, self.running, !self.paused, self.session == session,
+                      self.quotaRequest == request else { return }
+                self.quotaInFlight = false
+                self.queue.async {
+                    guard !requestCancellation.isCancelled, self.readerSession == session,
+                          self.readerCancellation?.isCancelled == false else { return }
+                    let effective = AgentAntigravityUsage.resolved(reading, previous: self.store.limits)
+                    for provider in [AgentProvider.gemini, .agy] {
+                        self.store.clearLimits(provider)
+                        if self.enabled.contains(provider), let limits = effective.limits[provider] {
+                            self.store.updateLimits(limits)
+                        }
+                    }
+                    DispatchQueue.main.async {
+                        guard !requestCancellation.isCancelled, self.running, self.session == session,
+                              self.quotaRequest == request else { return }
+                        self.quotaState = effective.state
+                    }
+                    self.publish()
+                }
+            }
         }
     }
 
@@ -450,6 +508,7 @@ final class AgentUsageService: ObservableObject {
             case .codex: entries = AgentLogParser.parseCodex(line, state: &cursor.state, now: now)
             case .opencode: entries = AgentLogParser.parseOpenCode(line, state: &cursor.state, now: now)
             case .copilot: entries = AgentLogParser.parseCopilot(line, state: &cursor.state, now: now)
+            case .gemini, .agy: entries = [] // Quota pools have no supported session-log reader.
             }
             guard !entries.isEmpty else { return }
             changed = true
@@ -517,6 +576,7 @@ final class AgentUsageService: ObservableObject {
     private func tickTimer() {
         guard running else { return }
         syncPrices()
+        requestQuota()
         queue.async { [self] in
             guard readerSession >= 0 else { return }
             let now = Date()
@@ -616,6 +676,9 @@ final class AgentUsageService: ObservableObject {
         guard store.reportsTransitions else { return }
         let threshold = NotchAgentSupport.limitThreshold() ?? NotchAgentSupport.defaultLimitThreshold
         for (provider, limits) in store.limits {
+            // Remote quota pools are display-only in this release. Cached or
+            // expired observations must never announce a warning or renewal.
+            guard provider.supportsAnalytics else { continue }
             for window in AgentLimitSupport.crossings(previous: previousLimits[provider], current: limits,
                                                       threshold: threshold) {
                 warned[window.id] = (provider, window)
@@ -625,7 +688,8 @@ final class AgentUsageService: ObservableObject {
         // A banked reset renews a warned window before its time, which is
         // news now rather than at the renewal it replaced.
         for (id, entry) in warned {
-            guard let window = store.limits[entry.provider]?.windows.first(where: { $0.id == id }),
+            guard entry.provider.supportsAnalytics,
+                  let window = store.limits[entry.provider]?.windows.first(where: { $0.id == id }),
                   let was = entry.window.resetsAt, let resets = window.resetsAt,
                   resets.timeIntervalSince(was) > 60, window.usedPercent < threshold else { continue }
             warned[id] = nil
@@ -637,6 +701,8 @@ final class AgentUsageService: ObservableObject {
     /// A warned window that renews brings its agent back: worth a word.
     private func reportRenewals(now: Date) {
         for (id, entry) in warned {
+            // A timer alone cannot confirm that a remote quota has renewed.
+            guard entry.provider.supportsAnalytics else { continue }
             guard let resets = entry.window.resetsAt, resets <= now else { continue }
             warned[id] = nil
             report(.limitReset(provider: entry.provider, window: entry.window))

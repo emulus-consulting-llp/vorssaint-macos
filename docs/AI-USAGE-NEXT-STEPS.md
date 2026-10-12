@@ -28,7 +28,7 @@ It targets community commit `fe24c176`, aligned through the source-equivalent
   providers. SF Symbols provide the new marks.
 - Read `RetrieveUserQuotaSummary` only from a validated local Antigravity process.
   Discover executable paths safely even when they contain spaces; verify PID,
-  token and listening port together. Stored endpoint data is only a hint.
+  token and listening port together. Stored endpoint credentials are not used.
 - Use numeric loopback URLs, reject redirects, bound candidates/request duration
   and total work, and scope self-signed trust to the validated endpoint. Never
   print or persist tokens. Select one process deterministically and never combine
@@ -46,6 +46,8 @@ It targets community commit `fe24c176`, aligned through the source-equivalent
   either on cards or in the closed island. Preserve existing providers' behavior.
 - Add settings help, localized states, and privacy documentation. Do not install
   hooks, change agent settings, add pricing tables, or modify unrelated features.
+- Defer notifications for the new quota pools; a cached observation or elapsed
+  reset time must not announce an unconfirmed renewal.
 
 ## Review and evidence
 
@@ -54,9 +56,9 @@ quota-first scope on 2026-10-12. Its corrections are incorporated above: preserv
 existing visibility/analytics, reuse the archive-compatible source, avoid fabricated
 resets, validate discovery, and reject obsolete callbacks.
 
-Local cache inspection confirms the four bucket IDs and response wrapper shape,
-but its last observation is 2026-10-03. That is historical format evidence, not a
-successful live integration check. The RPC is undocumented and remains best-effort.
+Local cache inspection established the four bucket IDs and response wrapper shape.
+A subsequent live probe on 2026-10-12 returned both pools and all four unexpired
+windows in 0.30 seconds. The RPC is undocumented and remains best-effort.
 
 Validation must cover parser fixtures (both pools, missing/invalid fields), preserved
 cache timestamps, expiry, default-off preferences, paths with spaces, cancellation,
@@ -71,6 +73,14 @@ from fixture tests and compilation.
 - Full community test suite passed: 115,896 checks plus preference cleanup,
   uninstall-spaces and Developer installation-isolation scripts.
 - Developer build and selftest passed. Build used the fallback icon because
-  `actool` is unavailable. No manual UI verification has been claimed.
+  `actool` is unavailable.
 - User confirmed usage limits and reset times first; analytics remains deferred.
-- Feature implementation is next.
+- Gemini/Antigravity opt-in cards and the shared local quota reader are implemented.
+- Feature checks passed: 722 agents checks and 8,251 preferences, localization and
+  repository checks. Fixtures cover invalid responses, expired readings, cached
+  timestamps, fallback precedence, cancellation and analytics isolation.
+- Both live quota cards were inspected in the running Developer app. Cached,
+  expired and unavailable behavior is covered by fixtures, separately from live UI
+  verification. The official app's profile was not changed.
+- A separate final review identified a cached-notification edge case; the new
+  pools are display-only, with quota notifications deferred.

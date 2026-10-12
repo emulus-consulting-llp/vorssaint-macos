@@ -58,6 +58,9 @@ Per app volume, a real system monitor, a better app switcher, window snapping, D
 
 ## Install only what you use
 
+This personal fork adds opt-in [Gemini and Antigravity usage-limit cards](docs/AI-USAGE-QUOTAS.md).
+Use the Developer build for custom changes; see [fork maintenance](docs/FORK-MAINTENANCE.md).
+
 Choose individual features or start with a preset. Uninstalled features stop loading and disappear from the interface; reinstalling restores their settings. Setup asks only for the permissions your choices need.
 
 <p align="center">

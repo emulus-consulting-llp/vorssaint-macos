@@ -78,17 +78,24 @@ enum NotchAgentSupport {
 
     static func providers(in defaults: UserDefaults = .standard) -> [AgentProvider] {
         AgentProvider.allCases.filter {
-            defaults.object(forKey: key(for: $0)) as? Bool ?? true
+            defaults.object(forKey: key(for: $0)) as? Bool ?? $0.enabledByDefault
         }
     }
 
     static func key(for provider: AgentProvider) -> String {
         switch provider {
         case .claude: return DefaultsKey.notchAgentsClaude
+        case .gemini: return DefaultsKey.notchAgentsGemini
+        case .agy: return DefaultsKey.notchAgentsAgy
         case .codex: return DefaultsKey.notchAgentsCodex
         case .opencode: return DefaultsKey.notchAgentsOpenCode
         case .copilot: return DefaultsKey.notchAgentsCopilot
         }
+    }
+
+    /// Explicitly enabled quota providers show a card even without session logs.
+    static func visibleProviders(enabled: [AgentProvider], seen: Set<AgentProvider>) -> [AgentProvider] {
+        enabled.filter { !$0.supportsAnalytics || seen.contains($0) }
     }
 
     /// Every card in the saved order; cards added later join at the end.
@@ -137,7 +144,7 @@ enum NotchAgentSupport {
         case .session: kind = .session
         case .weekly: kind = .weekly
         }
-        return limits?.windows.first { $0.kind == kind && $0.scope == nil }.map { AgentLimitSupport.current($0, at: now) }
+        return AgentLimitSupport.displayWindows(limits, now: now).first { $0.kind == kind && $0.scope == nil }
     }
 
     /// The resting island's allowance across every account: the most spent
@@ -236,6 +243,7 @@ enum NotchAgentSupport {
 
     static func tiles(cards: [NotchAgentCard], providers: [AgentProvider]) -> [NotchAgentTile] {
         cards.flatMap { card -> [NotchAgentTile] in
+            if !providers.isEmpty, !providers.contains(where: \.supportsAnalytics), card != .limits { return [] }
             switch card {
             case .limits: return providers.filter(\.reportsLimits).map { NotchAgentTile(card: .limits, provider: $0) }
             // Banked resets belong to a Codex account.
