@@ -23,3 +23,9 @@ AGENTS.md
 *.xcodeproj
 xcuserdata/
 .swiftpm/
+
+# Personal fork: local prototype, backups, and generated test output
+/temp-ai-usage-bar/
+/_temp_working_folder/
+/main
+__pycache__/
