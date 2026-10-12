@@ -20,9 +20,9 @@ verified statements about current providers, macOS releases, or this fork.
 - Nested Git metadata and build output.
 
 The complete original directory remains locally at `../../temp-ai-usage-bar`,
-ignored by the parent repository. A local archive and a Git bundle preserve it
-under `../../_temp_working_folder/`; `fork-setup-backup-location.txt` identifies
-the backup directory. Those local files are not restored by cloning GitHub.
+ignored by the parent repository. The temporary working folder and its local
+backups were removed after the integration work was completed. The original
+prototype directory is not restored by cloning GitHub.
 Keep a separate machine backup if the full prototype is needed elsewhere.
 
 Do not run the prototype's install scripts as part of fork setup. Implement the
