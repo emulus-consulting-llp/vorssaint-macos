@@ -1,15 +1,17 @@
 # Maintaining your personal Vorssaint fork
 
-Your existing personal work lives on `ai-usage-tracker`. Keep `main` as the
-preserved original community baseline. It is not a mirror of the current upstream
-history. The AI usage feature itself is still to be implemented.
+Your active personal branch is `personal/ai-usage`; `community` tracks the tested
+community baseline. `main` and `ai-usage-tracker` preserve the original history.
+The AI usage feature is being developed on the aligned personal branch.
 
 | Name | Meaning |
 | --- | --- |
 | `origin` | Your GitHub fork: `emulus-consulting-llp/vorssaint-macos` |
 | `upstream` | Community source: `vorssaint/vorssaint-utils` |
 | `main` | Preserved original community code, with no personal feature changes |
-| `ai-usage-tracker` | Your personal code, plans and setup documentation |
+| `ai-usage-tracker` | Preserved work before history alignment |
+| `community` | Clean, tested community baseline |
+| `personal/ai-usage` | Active personal code, plans and documentation |
 
 Normal pushes target `origin`. The local `upstream` push URL is deliberately
 unusable; fetching still works. Git remote settings are local to this checkout,
@@ -17,9 +19,8 @@ so a new clone needs the upstream setup below as well.
 
 ## Day-to-day changes
 
-Work on `ai-usage-tracker`, keep commits focused, and push them to the same branch
-on your fork for now. After the one-time alignment below, use `personal/ai-usage`
-instead. Future features can use separate branches based on your personal
+Work on `personal/ai-usage`, keep commits focused, and push them to the same
+branch on your fork. Future features can use separate branches based on your personal
 branch and be merged back when ready. Do not put personal feature changes on
 `main` or open a pull request to the original project unless you want to contribute.
 
@@ -27,7 +28,7 @@ For AI usage, start with `Sources/Vorssaint/Services/AgentUsage/`, the
 `NotchAgent*` views in `Sources/Vorssaint/UI/Notch/`, and
 `Sources/Vorssaint/UI/Settings/NotchAgentsSettings.swift`. Keep changes to shared
 app infrastructure as small as practical. The existing [feature plan](../plan.md)
-must be reassessed before implementation; the preserved
+is historical; follow [the revised plan](AI-USAGE-NEXT-STEPS.md). the preserved
 [prototype reference](ai-usage-reference/SNAPSHOT.md) is not production code.
 
 ## One-time history alignment before development
@@ -46,7 +47,7 @@ There is an exact source-equivalent anchor in the new history:
 | Shared tree object | `c53e5418eed174aace9f725a28688a0a65524c59` |
 | Upstream tip when checked | `fe24c176` |
 
-The next development stage should first create `community` at `dcd7c1fb` and a new
+The alignment stage created `community` at `dcd7c1fb` and a new
 personal branch, `personal/ai-usage`, from that anchor. Bring over only the final
 reviewed personal files: `plan.md`, the fork setup/maintenance guides, the prototype
 reference directory, and the personal ignore entries. Do not replay the broken
@@ -54,21 +55,22 @@ gitlink or replace newer upstream defaults wholesale. Verify application files
 still match the preserved baseline, then commit and push those new branches.
 Keep the existing `main` and `ai-usage-tracker` branches for historical reference.
 
-Those new branches have **not** been created during setup. Once created, use
+Alignment is complete and the new branches are saved to GitHub. Use
 `personal/ai-usage` for personal development and `community` for the clean community
 baseline. This separates history alignment from application updates.
 
-There are 397 newer upstream commits after the identical-tree anchor. At inspection
-time they change 502 files, including AI usage code. Trial that application update
-separately using the routine below, validate it, and reassess `plan.md` before
-implementing the feature. The old plan's source locations and findings are historical.
+The first update brought in 397 newer upstream commits through `fe24c176`. It
+merged without conflicts and passed 115,896 automated checks, the Developer build
+and its selftest. The build uses the existing fallback app icon because `actool`
+is not installed. This validates compilation and automated checks, not every
+upstream UI or hardware behavior. The old plan's source locations are historical.
 
 ## Bringing in community updates after alignment
 
 Updates require combining source code, testing, and rebuilding your personal app.
 GitHub's Sync fork button only updates a repository branch. It does not update
 your custom branch or the app installed on your Mac. Likewise, `git pull` on
-`ai-usage-tracker` normally reads your fork's matching branch, not `upstream/main`.
+`personal/ai-usage` normally reads your fork's matching branch, not `upstream/main`.
 
 Have your coding assistant follow this routine whenever you want an update:
 
@@ -141,7 +143,7 @@ branches likewise will not trigger push CI under the existing configuration.
 ```sh
 git clone https://github.com/emulus-consulting-llp/vorssaint-macos.git
 cd vorssaint-macos
-git switch ai-usage-tracker
+git switch personal/ai-usage
 git remote add upstream https://github.com/vorssaint/vorssaint-utils.git
 git remote set-url --push upstream https://example.invalid/upstream-push-disabled
 git config --local remote.pushDefault origin
@@ -152,5 +154,3 @@ git fetch --no-tags upstream
 The prototype reference is included in a clone; the full original prototype and
 local backups are not. See [the snapshot notes](ai-usage-reference/SNAPSHOT.md).
 The setup steps and review record are in [the setup plan](FORK-SETUP-PLAN.md).
-After the one-time alignment has been completed and published, switch to
-`personal/ai-usage` instead of `ai-usage-tracker` in the clone instructions above.
