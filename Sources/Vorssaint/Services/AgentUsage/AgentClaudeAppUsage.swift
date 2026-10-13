@@ -64,7 +64,8 @@ enum AgentClaudeAppUsage {
     /// renewal times: a session renews five hours after its first request,
     /// which the history brackets and Claude Code's own first request can
     /// narrow, and a week renews every seven days at the moment of the
-    /// last drop the history saw.
+    /// last drop the history saw. A reading that can no longer speak for any
+    /// of its windows comes back with none, so the card keeps their rows.
     static func limits(from samples: [Sample], now: Date, sessionStart: Date? = nil,
                        organization: String? = nil) -> AgentLimits? {
         let samples = readings(samples, organization: organization)
@@ -72,8 +73,10 @@ enum AgentClaudeAppUsage {
               now.timeIntervalSince(latest.date) < 7 * 86_400 else { return nil }
         let history = samples.filter { $0.organization == latest.organization }
         var result: [AgentLimitWindow] = []
+        var known = false
         for window in windows {
             guard let used = latest.used[window.key] else { continue }
+            known = true
             let length = TimeInterval(window.minutes) * 60
             // An old reading says nothing about a session that renewed since.
             if window.kind == .session, now.timeIntervalSince(latest.date) >= length { continue }
@@ -87,7 +90,7 @@ enum AgentClaudeAppUsage {
             result.append(AgentLimitWindow(id: "claude.\(window.key)", kind: window.kind, minutes: window.minutes,
                                            scope: window.scope, usedPercent: used, resetsAt: resets))
         }
-        guard !result.isEmpty else { return nil }
+        guard known else { return nil }
         return AgentLimits(provider: .claude, windows: result, observedAt: latest.date, source: .claudeApp)
     }
 

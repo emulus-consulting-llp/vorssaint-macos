@@ -2493,12 +2493,13 @@ enum NotchAgentTests {
         let afterRenewal = AgentClaudeAppUsage.samples(from: history([
             ("2026-09-16T19:50:00Z", "o", ["fh": 10, "sd": 95]), ("2026-09-16T20:05:00Z", "o", ["fh": 0, "sd": 1]),
             ("2026-09-23T21:00:00Z", "o", ["fh": 2, "sd": 3])])) ?? []
-        suite.expect(AgentClaudeAppUsage.limits(from: samples, now: at("2026-09-24T15:00:00Z")) == nil
+        suite.expect(AgentClaudeAppUsage.limits(from: samples, now: at("2026-09-24T15:00:00Z"))?.windows == []
                         && AgentClaudeAppUsage.limits(from: afterRenewal, now: at("2026-09-25T15:00:00Z"))?.windows
                         .map(\.resetsAt) == [at("2026-09-30T20:00:00Z")],
                      "a day-old week is kept only when its next renewal is known")
-        suite.expect(AgentClaudeAppUsage.limits(from: renewed, now: at("2026-09-24T15:00:00Z")) == nil,
-                     "a week that renewed after the reading is not shown with its old use")
+        let afterWeek = AgentClaudeAppUsage.limits(from: renewed, now: at("2026-09-24T15:00:00Z"))
+        suite.expect(afterWeek?.windows == [] && afterWeek?.observedAt == at("2026-09-23T14:20:00Z"),
+                     "a week that renewed after the reading is not shown with its old use, but the reading still says the plan has limits")
         let accounts = AgentClaudeAppUsage.samples(from: history([
             ("2026-09-23T14:10:00Z", "o", ["fh": 30, "sd": 50]), ("2026-09-23T14:20:00Z", "x", ["fh": 90, "sd": 95])])) ?? []
         suite.expect(AgentClaudeAppUsage.limits(from: accounts, now: now, organization: "o")?.windows.map(\.usedPercent) == [30, 50]

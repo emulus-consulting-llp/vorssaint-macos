@@ -20,8 +20,11 @@ providers retain their notifications.
 readings: the Claude app's saved plan history, or `~/.aiusage/claude.json`, which
 the personal Claude Code status line hook from the ai-usage-bar prototype writes on
 every render. That file carries exact renewal times. It is as fresh as Claude Code's
-last render; after 30 minutes the bars dim, and a window that has since renewed is
-left out instead of shown empty. Without either reading, the card keeps its
+last render; after 30 minutes the bars dim. A window that has since renewed has
+spent an unknown amount, so its percentage is not shown: the card keeps its
+**Session** and **Week** rows with an empty bar and a dash until the next reading,
+and the session counts down to the end of Claude Code's current five-hour block
+when there is one. Without a reading from the last seven days, the card keeps its
 previous estimated-session behavior.
 
 **Codex** plans that report only a weekly window gain a **Session** bar from a

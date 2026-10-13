@@ -28,6 +28,9 @@ enum AgentPersonalLimitsTests {
         let later = now.addingTimeInterval(3600)
         suite.expect(AgentClaudeStatusLineUsage.limits(from: full, now: later)?.windows.map(\.kind) == [.weekly],
                      "a renewed session is left out rather than shown empty")
+        let afterWeek = AgentClaudeStatusLineUsage.limits(from: full, now: now.addingTimeInterval(2 * 86_400))
+        suite.expect(afterWeek?.windows == [] && afterWeek?.observedAt == Date(timeIntervalSince1970: fetched),
+                     "once every window renewed, the reading keeps its time and no windows, so the card keeps their rows")
         suite.expect(AgentClaudeStatusLineUsage.limits(from: cache(["fetched_at": fetched, "has_limits": false,
                                                                     "five_hour": NSNull(), "seven_day": NSNull()]),
                                                        now: now) == nil,

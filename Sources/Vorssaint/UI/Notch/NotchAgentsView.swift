@@ -159,6 +159,7 @@ private struct NotchAgentLimitsCard: View {
 
     var body: some View {
         let windows = windows
+        let pending = pending
         NotchAgentCardChrome {
             VStack(alignment: .leading, spacing: 6) {
                 NotchAgentCardHeader(title: provider.displayName, symbol: provider.symbol, tint: provider.tint,
@@ -171,7 +172,7 @@ private struct NotchAgentLimitsCard: View {
                         if !snapshot.working(provider).isEmpty { NotchAgentPulse(tint: provider.tint, size: 5) }
                     }
                 }
-                if windows.isEmpty {
+                if windows.isEmpty && pending.isEmpty {
                     if !provider.supportsAnalytics {
                         Text(quotaState == .loading ? text.loading :
                             snapshot.limits[provider] == nil ? quotaText.unavailable : quotaText.waiting)
@@ -179,7 +180,7 @@ private struct NotchAgentLimitsCard: View {
                     } else { estimate }
                 } else {
                     VStack(spacing: 5) {
-                        if missingSession { pendingSession }
+                        if pending.contains(.session) { pendingRow(.session) }
                         ForEach(windows) { window in
                             if !provider.supportsAnalytics, (window.resetsAt ?? .distantPast) <= now {
                                 VStack(alignment: .leading, spacing: 2) {
@@ -195,9 +196,10 @@ private struct NotchAgentLimitsCard: View {
                                 .help(quotaText.waiting)
                             } else { row(window) }
                         }
+                        if pending.contains(.weekly) { pendingRow(.weekly) }
                     }
                     .opacity(stale ? 0.6 : 1)
-                    if windows.count == 1 { caption }
+                    if windows.count + pending.count == 1 { caption }
                 }
             }
         }
@@ -259,23 +261,29 @@ private struct NotchAgentLimitsCard: View {
         .help(help(window))
     }
 
-    /// Claude keeps its session row while the readings have none: a session
-    /// that renewed after the last reading has spent an unknown amount since.
-    private var missingSession: Bool {
-        provider == .claude && !windows.isEmpty && !windows.contains { $0.kind == .session }
+    /// Claude keeps a row for its session and its week while a reading says
+    /// the plan has them: a window that renewed after the last reading has
+    /// spent an unknown amount since, so its row waits for the next one.
+    private var pending: [AgentLimitWindow.Kind] {
+        guard provider == .claude, snapshot.limits[provider] != nil else { return [] }
+        let windows = windows
+        var kinds: [AgentLimitWindow.Kind] = []
+        if !windows.contains(where: { $0.kind == .session }) { kinds.append(.session) }
+        if !windows.contains(where: { $0.kind != .session }) { kinds.append(.weekly) }
+        return kinds
     }
 
-    /// The session's place until the next reading, timed by Claude Code's own
-    /// first request when this Mac saw one.
-    private var pendingSession: some View {
-        let block = snapshot.claudeBlock.flatMap { $0.end > now ? $0 : nil }
+    /// A window's place until the next reading. A session is timed by Claude
+    /// Code's own first request when this Mac saw one.
+    private func pendingRow(_ kind: AgentLimitWindow.Kind) -> some View {
+        let block = kind == .session ? snapshot.claudeBlock.flatMap { $0.end > now ? $0 : nil } : nil
         let elapsed = block.map { block -> Double in
             let length = block.end.timeIntervalSince(block.start)
             return length > 0 ? now.timeIntervalSince(block.start) / length : 0
         }
         return VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 5) {
-                Text(text.session)
+                Text(kind == .session ? text.session : text.weekly)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.white.opacity(0.85))
                     .lineLimit(1)
@@ -300,7 +308,14 @@ private struct NotchAgentLimitsCard: View {
             NotchAgentMeter(value: 0, pace: elapsed.map { display == .remaining ? 1 - $0 : $0 },
                             tint: provider.tint, height: 4, dimmed: true)
         }
-        .help(quotaText.waiting)
+        .help(pendingHelp)
+    }
+
+    private var pendingHelp: String {
+        guard let observed = snapshot.limits[provider]?.observedAt, now.timeIntervalSince(observed) > 600 else {
+            return quotaText.waiting
+        }
+        return quotaText.waiting + " · " + text.updated(observed.formatted(.relative(presentation: .named).locale(locale)))
     }
 
     /// What the window covers: its length, or the model it is kept for.

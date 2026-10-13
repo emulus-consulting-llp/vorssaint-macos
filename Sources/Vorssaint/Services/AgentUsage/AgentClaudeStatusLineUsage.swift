@@ -22,7 +22,9 @@ enum AgentClaudeStatusLineUsage {
 
     /// The windows still running at `now`. A window that renewed after the
     /// reading has spent an unknown amount since, so it is left out rather
-    /// than shown empty, as with the Claude app's readings.
+    /// than shown empty, as with the Claude app's readings. Once every window
+    /// has, the reading comes back with none: the plan still has limits, and
+    /// the card keeps their rows until the next reading.
     static func limits(from data: Data, now: Date) -> AgentLimits? {
         guard data.count <= maximumSize,
               let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
@@ -30,16 +32,18 @@ enum AgentClaudeStatusLineUsage {
         let observed = Date(timeIntervalSince1970: stamp)
         guard observed <= now.addingTimeInterval(300), now.timeIntervalSince(observed) < 7 * 86_400 else { return nil }
         var result: [AgentLimitWindow] = []
+        var known = false
         for window in windows {
             guard let values = json[window.key] as? [String: Any],
                   let used = number(values["used_percentage"]) else { continue }
+            known = true
             let resets = number(values["resets_at"]).flatMap { $0 > 0 ? Date(timeIntervalSince1970: $0) : nil }
             if let resets, resets <= now { continue }
             if resets == nil, now.timeIntervalSince(observed) >= 86_400 { continue }
             result.append(AgentLimitWindow(id: window.id, kind: window.kind, minutes: window.minutes, scope: nil,
                                            usedPercent: min(100, max(0, used)), resetsAt: resets))
         }
-        guard !result.isEmpty else { return nil }
+        guard known else { return nil }
         // Kept with the Claude app's readings: both are saved on this Mac and
         // read again on every tick, and the archive already knows the source.
         return AgentLimits(provider: .claude, windows: result, observedAt: observed, source: .claudeApp)
