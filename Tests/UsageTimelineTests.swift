@@ -103,6 +103,7 @@ enum UsageTimelineTests {
         suite.expect(UsageForeground.documentPath(from: "file:///tmp/Project%20budget.xlsx") == "/tmp/Project budget.xlsx", "document URLs preserve decoded local paths")
         suite.expect(UsageForeground.documentPath(from: "https://example.com/file") == nil && UsageForeground.documentPath(from: "budget.xlsx") == nil, "browser URLs and guessed paths are not stored")
         suite.expect(UsageForeground.documentPath(from: "file://remote-server/doc.xlsx") == nil, "remote document URLs are not misrepresented as local paths")
+        documentMetadata(suite)
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "America/New_York")!
         let spring = calendar.date(from: DateComponents(year: 2026, month: 3, day: 8, hour: 12))!
@@ -148,5 +149,58 @@ enum UsageTimelineTests {
         } catch {
             suite.expect(false, "usage timeline storage fixture failed: \(error)")
         }
+    }
+
+    private static func documentMetadata(_ suite: TestSuite) {
+        let presentation = URL(fileURLWithPath: "/Users/test/Downloads/Quarterly review (1).pptx")
+        suite.expect(UsageForeground.documentPath(from: presentation) == presentation.path,
+                     "URL-valued Office accessibility attributes preserve the actual document path")
+        suite.expect(UsageForeground.documentPath(from: presentation as NSURL) == presentation.path,
+                     "NSURL-valued document metadata bridges to a local path")
+        suite.expect(UsageForeground.documentPath(from: "/tmp/Revenue 100%20.xlsx") == "/tmp/Revenue 100%20.xlsx",
+                     "explicit absolute paths retain literal percent characters instead of decoding them as URLs")
+        suite.expect(UsageForeground.documentPath(from: URL(string: "https://example.com/report.pptx")!) == nil
+                     && UsageForeground.documentPath(from: "file:report.pptx") == nil
+                     && UsageForeground.documentPath(from: 42) == nil,
+                     "web URLs, relative file URLs and malformed AX values cannot become local document paths")
+        var urlReads = 0
+        let primary = UsageFocusSupport.documentPath(document: { presentation.absoluteString }, url: {
+            urlReads += 1
+            return URL(fileURLWithPath: "/tmp/other.pptx")
+        })
+        suite.expect(primary == presentation.path && urlReads == 0,
+                     "an explicit AXDocument path takes priority without reading another attribute")
+        suite.expect(UsageFocusSupport.documentPath(document: { nil }, url: { presentation }) == presentation.path,
+                     "PowerPoint paths are recovered from AXURL when AXDocument is unavailable")
+        suite.expect(UsageFocusSupport.documentPath(document: { "https://example.com" }, url: { presentation }) == presentation.path,
+                     "an unusable AXDocument value does not suppress a valid local AXURL")
+        suite.expect(UsageFocusSupport.documentPath(document: { nil }, url: { nil }) == nil,
+                     "unsaved documents remain pathless instead of inventing a filename")
+
+        func resolve(focused: Int? = nil, main: Int? = nil, windows: [Int] = [],
+                     focusedFlags: Set<Int> = [], mainFlags: Set<Int> = [], minimized: Set<Int> = []) -> Int? {
+            UsageFocusSupport.window(focused: { focused }, main: { main }, windows: { windows },
+                                     isFocused: { focusedFlags.contains($0) }, isMain: { mainFlags.contains($0) },
+                                     isMinimized: { minimized.contains($0) })
+        }
+        suite.expect(resolve(focused: 1, main: 2, windows: [2, 3]) == 1,
+                     "the focused document wins even when another Office document is the main window")
+        suite.expect(resolve(main: 2, windows: [1, 2]) == 2,
+                     "Office can record its main document when AXFocusedWindow is unanswered")
+        suite.expect(resolve(windows: [1, 2], focusedFlags: [2], mainFlags: [1]) == 2,
+                     "window-list focus flags recover the active document without choosing a different main document")
+        suite.expect(resolve(windows: [1, 2], mainFlags: [2]) == 2,
+                     "the window-list main flag supplies the document when direct window attributes are missing")
+        suite.expect(resolve(windows: [1]) == 1 && resolve(windows: [1, 2]) == nil && resolve() == nil,
+                     "a sole visible window is safe to use, while an ambiguous set of documents remains unresolved")
+        suite.expect(resolve(main: 1, windows: [1, 2], minimized: [1]) == 2
+                     && resolve(windows: [1], minimized: [1]) == nil,
+                     "minimized documents are not mistaken for active work")
+        var otherReads = 0
+        let focused = UsageFocusSupport.window(focused: { 1 }, main: { otherReads += 1; return 2 },
+                                               windows: { otherReads += 1; return [3] },
+                                               isFocused: { _ in false }, isMain: { _ in false }, isMinimized: { _ in false })
+        suite.expect(focused == 1 && otherReads == 0,
+                     "a successful focused-window read avoids extra cross-process fallback calls")
     }
 }

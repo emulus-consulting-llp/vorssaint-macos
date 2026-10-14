@@ -32,6 +32,7 @@ final class UsageFocusCollector {
     private var generation: UUID?
     private let callbackLock = NSLock()
     private var callbackPending = false
+    private var retryToken = UUID()
     var onForeground: ((UsageForeground?, UsageMoment) -> Void)?
 
     init(queue: DispatchQueue, gate: UsageObservationGate) { self.queue = queue; self.gate = gate }
@@ -51,10 +52,11 @@ final class UsageFocusCollector {
             let fallback = next.map { UsageForeground(appName: $0.name, bundleID: $0.bundleID, processID: $0.processID) }
             onForeground?(fallback, moment)
         }
-        refresh(at: moment)
+        refresh(at: moment, retriesRemaining: appChanged ? 3 : 0)
     }
 
     func stop() {
+        retryToken = UUID()
         generation = nil
         detach()
         app = nil
@@ -62,7 +64,8 @@ final class UsageFocusCollector {
 
     func forget(processID: String) { identities.removeValue(forKey: processID) }
 
-    private func refresh(at moment: UsageMoment) {
+    private func refresh(at moment: UsageMoment, retriesRemaining: Int = 0) {
+        retryToken = UUID()
         guard let generation, gate.accepts(generation) else { return }
         guard let app else { onForeground?(nil, moment); return }
         var result = UsageForeground(appName: app.name, bundleID: app.bundleID, processID: app.processID)
@@ -74,9 +77,17 @@ final class UsageFocusCollector {
         let application = AXUIElementCreateApplication(app.pid)
         AXUIElementSetMessagingTimeout(application, 0.35)
         if observer == nil { installObserver(application: application, pid: app.pid) }
-        guard let window = element(application, attribute: kAXFocusedWindowAttribute) else {
+        let window = UsageFocusSupport.window(
+            focused: { self.element(application, attribute: kAXFocusedWindowAttribute) },
+            main: { self.element(application, attribute: kAXMainWindowAttribute) },
+            windows: { self.value(application, attribute: kAXWindowsAttribute) as? [AXUIElement] ?? [] },
+            isFocused: { self.value($0, attribute: kAXFocusedAttribute) as? Bool == true },
+            isMain: { self.value($0, attribute: kAXMainAttribute) as? Bool == true },
+            isMinimized: { self.value($0, attribute: kAXMinimizedAttribute) as? Bool == true })
+        guard let window else {
             observeWindow(nil)
             if gate.accepts(generation) { onForeground?(result, moment) }
+            retryMetadata(remaining: retriesRemaining, generation: generation, processID: app.processID)
             return
         }
         AXUIElementSetMessagingTimeout(window, 0.35)
@@ -97,8 +108,25 @@ final class UsageFocusCollector {
         identities[app.processID] = known
         observeWindow(window)
         if storeTitles { result.title = string(window, attribute: kAXTitleAttribute) }
-        if storePaths { result.documentPath = UsageForeground.documentPath(from: string(window, attribute: kAXDocumentAttribute)) }
+        if storePaths {
+            result.documentPath = UsageFocusSupport.documentPath(
+                document: { self.value(window, attribute: kAXDocumentAttribute) },
+                url: { self.value(window, attribute: kAXURLAttribute) })
+        }
         if gate.accepts(generation) { onForeground?(result, moment) }
+        if (storePaths && result.documentPath == nil) || (storeTitles && result.title == nil) {
+            retryMetadata(remaining: retriesRemaining, generation: generation, processID: app.processID)
+        }
+    }
+
+    private func retryMetadata(remaining: Int, generation: UUID, processID: String) {
+        guard remaining > 0 else { return }
+        let token = retryToken
+        queue.asyncAfter(deadline: .now() + 0.25 * Double(4 - remaining)) { [weak self] in
+            guard let self, self.retryToken == token, self.generation == generation,
+                  self.app?.processID == processID, self.gate.accepts(generation) else { return }
+            self.refresh(at: .now, retriesRemaining: remaining - 1)
+        }
     }
 
     private func installObserver(application: AXUIElement, pid: pid_t) {
@@ -136,17 +164,20 @@ final class UsageFocusCollector {
     }
 
     private func element(_ source: AXUIElement, attribute: String) -> AXUIElement? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(source, attribute as CFString, &value) == .success,
-              let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
+        guard let value = value(source, attribute: attribute),
+              CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
         return (value as! AXUIElement)
     }
 
     private func string(_ source: AXUIElement, attribute: String) -> String? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(source, attribute as CFString, &value) == .success,
-              let text = value as? String, !text.isEmpty else { return nil }
+        guard let text = value(source, attribute: attribute) as? String, !text.isEmpty else { return nil }
         return text
+    }
+
+    private func value(_ source: AXUIElement, attribute: String) -> CFTypeRef? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(source, attribute as CFString, &value) == .success else { return nil }
+        return value
     }
 
     private static let callback: AXObserverCallback = { observer, element, name, context in
@@ -165,7 +196,7 @@ final class UsageFocusCollector {
                 collector.identities[process]?.removeAll { CFEqual($0.0, element) }
                 collector.observedWindow = nil
             }
-            collector.refresh(at: moment)
+            collector.refresh(at: moment, retriesRemaining: 3)
         }
     }
 }

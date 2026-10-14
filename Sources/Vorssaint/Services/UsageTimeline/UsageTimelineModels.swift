@@ -63,8 +63,16 @@ struct UsageForeground: Codable, Equatable {
     var title: String?
     var documentPath: String?
 
-    static func documentPath(from value: String?) -> String? {
-        guard let value, let url = URL(string: value), url.isFileURL,
+    static func documentPath(from value: Any?) -> String? {
+        let url: URL
+        if let value = value as? URL {
+            url = value
+        } else if let value = value as? String, !value.isEmpty {
+            if value.hasPrefix("/") { url = URL(fileURLWithPath: value) }
+            else if let parsed = URL(string: value) { url = parsed }
+            else { return nil }
+        } else { return nil }
+        guard url.isFileURL, url.path.hasPrefix("/"),
               url.host == nil || url.host == "" || url.host == "localhost" else { return nil }
         return url.standardizedFileURL.path
     }

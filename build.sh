@@ -251,6 +251,7 @@ if (( TEST )); then
     mkdir -p "$TEST_OBJECT_DIR"
     TEST_SOURCES=(
         Sources/Vorssaint/Services/UsageTimeline/UsageTimelineModels.swift
+        Sources/Vorssaint/Services/UsageTimeline/UsageFocusSupport.swift
         Sources/Vorssaint/Services/UsageTimeline/UsageTimelineStore.swift
         Sources/Vorssaint/Core/UsageTimelineStrings.swift
         Sources/Vorssaint/Services/Media/MediaSupport.swift
