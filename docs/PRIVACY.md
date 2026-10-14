@@ -6,8 +6,8 @@ Vorssaint is built to be local-first. Core features run on your Mac, and the app
 
 - **No account.** There is nothing to sign up for and nobody to log in as.
 - **No subscription.** The app is free and stays free, with nothing held back behind a paid tier.
-- **No automatic telemetry.** Vorssaint gathers no usage stats, crash reports or device identifiers. Feedback sends technical details only when you select them after seeing the complete list.
-- **No Vorssaint analytics or tracking.** There are no analytics kits, no ad networks and no third party tracking anywhere in the app.
+- **No automatic telemetry.** Vorssaint sends no usage stats, crash reports or device identifiers. Feedback sends technical details only when you select them after seeing the complete list.
+- **No external analytics or tracking.** There are no analytics kits, no ad networks and no third party tracking anywhere in the app.
 - **No data selling.** Vorssaint never sells personal information or shared screenshots and recordings.
 - **Your settings stay put.** Preferences and saved state live in the app's own local storage on your Mac and are never uploaded.
 
@@ -18,6 +18,8 @@ Everything Vorssaint shows you, from the CPU and memory load to the temperatures
 Clipboard history, including the images and files you copy, lives in the app's local storage on your Mac and never leaves it. Copy text from screen recognizes the text entirely on device with Apple's Vision framework, and the temporary capture is deleted as soon as the text is read. Automatic clearing, when you switch it on, only empties the system clipboard on this Mac: nothing is sent anywhere, and items already saved to your history are left as they are.
 
 Command Bar saves how often you choose an item and a limited set of associations between typed search prefixes and the items you chose, so app and emoji ranking survives a restart. It stores keyed digests of those prefixes locally, not the search text itself, and excludes this learning and its local key from settings backups. You can clear it with Forget learned ranking in Command Bar settings.
+
+Usage Timeline is an opt-in utility. Installing it alone does not start collection. After you press Start tracking, it saves foreground app identity, focused-window identity, optional titles and available local document paths, interval times, and idle/screen-off/lock/sleep states in its private local SQLite database. Accessibility enables window details; app-level tracking works without it. It does not save screenshots, keyboard content, mouse coordinates, or background-window inventories, and does not query browser URLs separately from window titles. Titles may themselves contain document names or web addresses. Excluded apps leave anonymous gaps, with no saved app or window metadata. History is never uploaded and is excluded from settings backups. It stays on this Mac until you use Delete selected day or Delete all history. Pausing, disabling or uninstalling the feature stops collection and preserves existing history. Title and path settings affect future records; use the deletion controls to remove older records. See the [Usage Timeline guide](USAGE-TIMELINE.md).
 
 Recent Captures keeps up to 12 screenshots, within a 256 MB limit, in the app's private local cache so you can reopen them. Recordings are not duplicated: only their existing path and a small thumbnail are kept. Clear removes that history and its cached images. When a screenshot is copied as a file, its private local PNG is kept temporarily so other apps can finish reading it, then cleaned on later copies once it is older than 24 hours or earlier when the bounded cache fills. None of these local caches is uploaded automatically.
 

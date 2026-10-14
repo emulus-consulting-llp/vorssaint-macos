@@ -6,7 +6,7 @@ You can review or change every grant in System Settings, under Privacy and Secur
 
 | Permission | Optional | Powers |
 |---|---|---|
-| Accessibility | Yes | Scroll direction, Window Layout, the app and window switcher, Dock Preview, Dock click to minimize, middle click, paste as plain text, Finder cut and paste, quit on close, radial menu key actions, optional notch notification mirroring and keyboard feedback |
+| Accessibility | Yes | Scroll direction, Window Layout, the app and window switcher, Usage Timeline window details, Dock Preview, Dock click to minimize, middle click, paste as plain text, Finder cut and paste, quit on close, radial menu key actions, optional notch notification mirroring and keyboard feedback |
 | Screen Recording | Yes | Window previews, screenshots, copy text from screen, magnified color picking and screen recordings |
 | System Audio Recording | Yes | Volume mixer, optional live equalizer and system audio capture for recordings |
 | Microphone | Yes | Your voice in a screen recording, only when you turn it on |
@@ -29,6 +29,7 @@ You can review or change every grant in System Settings, under Privacy and Secur
 - **Scroll direction inverter**, which flips the mouse wheel.
 - **Window Layout**, which moves or resizes windows when you use a layout action, shortcut or optional trackpad or mouse gesture.
 - **App and window switcher**, which captures the switcher hotkey and reads the window list.
+- **Usage Timeline**, which reads the focused window, title and available local document path. Without Accessibility it records app-level usage only; it does not require Screen Recording.
 - **Dock Preview**, which reads Dock items and brings windows forward for a temporary peek.
 - **Dock click to minimize**, which spots clicks on the Dock icon of the active app and minimizes or restores its windows.
 - **Middle click**, which turns a three finger press on the trackpad into a middle click.
@@ -39,13 +40,13 @@ You can review or change every grant in System Settings, under Privacy and Secur
   for you and for the optional side button trigger; opening apps, files and
   links with the keyboard shortcut alone needs nothing.
 
-**If you say no.** These features stay off. Vorssaint sees the moment you grant the permission and brings them to life with no relaunch.
+**If you say no.** Usage Timeline continues with app-level recording and no window details. The other features listed above stay off. Vorssaint sees the moment you grant the permission and brings them to life with no relaunch.
 
 **Optional.** Yes. macOS shows its prompt the first time a feature needs it, and you can also grant it later in System Settings, under Privacy and Security, Accessibility.
 
 ## Screen Recording
 
-**Why it comes up.** On macOS, reading other windows' titles and grabbing their thumbnails counts as screen recording.
+**Why it comes up.** On macOS, reading titles through WindowServer and grabbing window thumbnails requires Screen Recording. Usage Timeline reads titles through Accessibility instead.
 
 **What uses it.** The window switcher and Dock Preview for live thumbnails and titles, screenshots and copy text from screen for the area you select, and the screen recorder for the area, window or display you choose.
 
