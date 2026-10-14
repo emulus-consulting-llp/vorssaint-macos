@@ -7,10 +7,18 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Summary
-Dynamic Island finds lyrics across more catalog variations, shows the active audio output in volume feedback and announces keyboard layout changes. Mouse navigation handles quick direction changes and apps with their own side-button controls, and Command Bar counts leap-day dates correctly.
+The window switcher can limit its columns and reach fullscreen windows from the current desktop, screenshot previews copy text, recordings save as GIFs of any length, and window recordings keep only the sound of their app. App volumes in the Volume mixer follow perceived loudness, and AI Agents follows OpenCode 2. Dynamic Island finds lyrics across more catalog variations, shows the active audio output in volume feedback and announces keyboard layout changes, with fixes for volume keys, mouse navigation, Dock instances, M4 Pro temperatures and Command Bar.
 
 ### Added
 - Dynamic Island can show the keyboard input source when it changes. Command Bar's temporary layout switches stay quiet. Settings → Dynamic Island → Activity → Indicators.
+- The window switcher can limit how many items sit in a row and wraps the rest. Settings → Window switcher → Options → Maximum columns.
+- Screenshot previews can copy the text in a capture when Screen OCR is installed.
+
+### Changed
+- Save as GIF and Copy as GIF work for recordings of any length.
+- With Show only the current desktop on, the window switcher also lists fullscreen windows from other desktops while Show fullscreen windows is on.
+- App sliders in the Volume mixer follow perceived loudness, so 50% sounds clearly quieter. Saved levels keep how loud each app plays.
+- Recording a single window captures only the sound of the app that owns it.
 
 ### Fixed
 - Lyrics lookup handles differences in titles, albums and artist credits, using bounded searches and verified artist aliases while rejecting incompatible recordings and unknown collaborators.
@@ -18,9 +26,15 @@ Dynamic Island finds lyrics across more catalog variations, shows the active aud
 - Mouse navigation handles quick changes between Back and Forward when the app's menu state has not caught up.
 - Apps without Back or Forward menu commands receive side clicks again, provided the click still belongs to the same foreground app.
 - Command Bar resolves February 29 without a year to the next valid occurrence and rejects impossible dates such as April 31.
+- Volume keys keep moving on outputs that only take coarse volume steps.
+- Dock clicks and Dock Preview act on the right instance when an app runs as several processes.
+- CPU temperature on Apple M4 Pro reads its hottest cores, so alerts and fan curves react in time.
+- Settings → Features no longer jumps or goes blank when a feature is installed or removed while scrolled down.
+- AI Agents follows OpenCode 2, including databases upgraded from OpenCode 1 and the cost of compactions.
+- Command Bar finds the tools Xcode keeps inside its bundle, such as Simulator, Instruments and Device Hub, and the uninstaller refuses apps that live inside another app.
 
 ### Contributors
-Thanks to @eioz, @JeanBaeez, @oskarsss, @unfilet and @ywu73.
+Thanks to @AB-boi, @ahmedabdullah-o, @beckhauser, @benjcrich, @COMEBACKISREAL, @eioz, @EugeneCarldotme, @Hackmodford, @iancenry, @JeanBaeez, @Likheet, @ManuLorenzzo, @mohammadhprp, @ncesar, @oskarsss, @PratikPawar1401, @unfilet and @ywu73.
 
 ## [3.4.1] - 2026-10-08
 
