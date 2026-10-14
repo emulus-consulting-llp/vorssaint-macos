@@ -3,9 +3,29 @@
 
 import Foundation
 import SQLite3
+import CoreGraphics
 
 enum UsageTimelineTests {
     static func run(_ suite: TestSuite) {
+        suite.expect(AppLanguage.allCases.allSatisfy { UsageTimelineStrings($0).isComplete }, "usage timeline has complete labels in every supported locale")
+        let inputEvent = CGEventType(rawValue: UInt32.max)
+        let idleAge = inputEvent.map { CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: $0) }
+        suite.expect(idleAge.map { $0.isFinite && $0 >= 0 } ?? false, "macOS exposes a valid all-input idle age for the collector")
+        suite.expect(!AppFeature.usageTimeline.installedByDefault, "timeline stays opt-in on updates")
+        suite.expect(SettingsBackupSupport.machineStateKeys.contains(DefaultsKey.usageTimelinePaused)
+                     && SettingsBackupSupport.exportKeys().contains(DefaultsKey.usageTimelineExcludedApps),
+                     "portable exclusions are backed up while runtime pause state stays local")
+        let gate = UsageObservationGate()
+        let inFlight = gate.current
+        gate.invalidate()
+        suite.expect(!gate.accepts(inFlight) && gate.accepts(gate.current), "pause/deletion invalidation rejects in-flight observation generations")
+        let formerlyLocked = UsageConditions(paused: true, locked: true, screenOff: true)
+        let resumed = UsageConditions.configured(previous: formerlyLocked, current: UsageConditions(),
+                                                wasEnabled: true, wasPaused: true)
+        suite.expect(resumed.canReadMetadata, "resume uses a fresh unlocked snapshot after missing notifications while paused")
+        let stillLocked = UsageConditions.configured(previous: UsageConditions(locked: true), current: UsageConditions(),
+                                                    wasEnabled: true, wasPaused: false)
+        suite.expect(stillLocked.presence == .locked, "changing recording preferences preserves a lock already observed by the running collector")
         func moment(_ seconds: Double) -> UsageMoment { UsageMoment(date: Date(timeIntervalSince1970: seconds), uptime: seconds) }
         let firstWindow = UUID(), secondWindow = UUID()
         let first = UsageForeground(appName: "Editor", bundleID: "tests.editor", processID: "1:launch",
@@ -30,6 +50,14 @@ enum UsageTimelineTests {
         suite.expect(day.entries.filter { $0.state == .active }.map { $0.foreground?.windowID } == [firstWindow, secondWindow], "same-app windows retain separate identities")
         suite.expect(day.totals.count == 1 && day.totals[0].duration == 100, "same-app totals sum only active window intersections")
         suite.expect(reducer.foreground == nil, "idle stops foreground collection")
+        var delayed = UsageReducer(at: moment(0))
+        delayed.observe(first, at: moment(0))
+        _ = delayed.checkpoint(at: moment(20))
+        delayed.observe(second, at: moment(10))
+        let delayedSpans = delayed.checkpoint(at: moment(30))
+        suite.expect(delayedSpans.filter { $0.stream == .presence }.count == 1
+                     && delayedSpans.filter { $0.stream == .foreground }.map(\.duration).reduce(0, +) == 30,
+                     "a delayed observation timestamp is not mistaken for a system clock change")
 
         conditions.idle = false
         conditions.locked = true
@@ -61,12 +89,20 @@ enum UsageTimelineTests {
         suite.expect(renamedSpans.count == 2 && renamedSpans.allSatisfy { $0.foreground?.windowID == firstWindow }, "title changes split visits without changing window identity")
         titleReducer.observe(renamed, at: moment(20))
         suite.expect(titleReducer.checkpoint(at: moment(25)).filter { $0.stream == .foreground }.count == 1, "duplicate metadata does not split visits")
+        let measuredSession = UUID()
+        let measuredFocus = UsageInterval(sessionID: measuredSession, stream: .foreground,
+                                         start: moment(0).date, end: moment(10).date, duration: 9.5, foreground: first)
+        let measuredPresence = UsageInterval(sessionID: measuredSession, stream: .presence,
+                                            start: moment(0).date, end: moment(10).date, duration: 9.5, presence: .active)
+        let measuredDay = UsageDay.build(intervals: [measuredFocus, measuredPresence], range: range, until: moment(10).date)
+        suite.expect(measuredDay.active == 9.5, "summaries use measured duration rather than a drifting wall clock")
         let jump = UsageMoment(date: Date(timeIntervalSince1970: 3600), uptime: 26)
         let clockSpans = titleReducer.checkpoint(at: jump)
         suite.expect(clockSpans.allSatisfy { $0.duration >= 0 && $0.end >= $0.start } && titleReducer.foreground?.start == jump.date, "clock discontinuities split streams without negative durations")
 
         suite.expect(UsageForeground.documentPath(from: "file:///tmp/Project%20budget.xlsx") == "/tmp/Project budget.xlsx", "document URLs preserve decoded local paths")
         suite.expect(UsageForeground.documentPath(from: "https://example.com/file") == nil && UsageForeground.documentPath(from: "budget.xlsx") == nil, "browser URLs and guessed paths are not stored")
+        suite.expect(UsageForeground.documentPath(from: "file://remote-server/doc.xlsx") == nil, "remote document URLs are not misrepresented as local paths")
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "America/New_York")!
         let spring = calendar.date(from: DateComponents(year: 2026, month: 3, day: 8, hour: 12))!
@@ -81,20 +117,23 @@ enum UsageTimelineTests {
             let session = UUID()
             let interval = UsageInterval(sessionID: session, stream: .presence, start: moment(0).date,
                                          end: moment(100).date, duration: 100, presence: .active)
-            try store.save([interval], session: session, checkpoint: moment(100).date)
+            let visit = UsageInterval(sessionID: session, stream: .foreground, start: moment(0).date,
+                                      end: moment(100).date, duration: 100, foreground: first)
+            try store.save([interval, visit], session: session, checkpoint: moment(100).date)
             let reopened = try UsageTimelineStore(url: url)
-            suite.expect(try reopened.intervals(in: range) == [interval], "checkpointed history survives opening another connection")
+            suite.expect(try Set(reopened.intervals(in: range).map(\.id)) == Set([interval.id, visit.id]), "checkpointed history survives opening another connection")
             let recovered = UsageDay.build(intervals: try reopened.intervals(in: range), range: range, until: moment(200).date)
-            suite.expect(recovered.active == 0 && recovered.other[.unrecorded] == 200, "a checkpoint never fabricates foreground or extends through downtime")
+            suite.expect(recovered.active == 100 && recovered.other[.unrecorded] == 100, "a checkpoint preserves the visit without extending it through downtime")
             try store.delete(in: DateInterval(start: moment(30).date, end: moment(70).date))
             let remaining = try store.intervals(in: range)
-            suite.expect(remaining.count == 2 && remaining.map(\.duration).reduce(0, +) == 60, "range deletion preserves intervals on both sides")
+            suite.expect(remaining.count == 4 && remaining.map(\.duration).reduce(0, +) == 120, "range deletion preserves both streams on both sides")
             suite.expect(remaining.allSatisfy { $0.end <= moment(30).date || $0.start >= moment(70).date }, "deleted time cannot remain in crossing spans")
             let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
             let directory = try FileManager.default.attributesOfItem(atPath: temporary.path)
             suite.expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600 && (directory[.posixPermissions] as? NSNumber)?.intValue == 0o700, "database and directory are owner-only")
             try store.delete(in: nil)
             suite.expect(try store.intervals(in: range).isEmpty, "delete all removes persisted intervals")
+            try store.save([interval, visit], session: session, checkpoint: moment(100).date)
             var handle: OpaquePointer?
             sqlite3_open(url.path, &handle)
             sqlite3_exec(handle, "PRAGMA user_version=999", nil, nil, nil)
@@ -104,6 +143,7 @@ enum UsageTimelineTests {
                 suite.expect(false, "unsupported schemas must be rejected")
             } catch UsageTimelineStore.Failure.unsupportedVersion {
                 suite.expect(FileManager.default.fileExists(atPath: url.path), "unsupported databases remain intact")
+                suite.expect(try reopened.intervals(in: range).count == 2, "unsupported schemas preserve existing activity records")
             }
         } catch {
             suite.expect(false, "usage timeline storage fixture failed: \(error)")

@@ -252,6 +252,7 @@ if (( TEST )); then
     TEST_SOURCES=(
         Sources/Vorssaint/Services/UsageTimeline/UsageTimelineModels.swift
         Sources/Vorssaint/Services/UsageTimeline/UsageTimelineStore.swift
+        Sources/Vorssaint/Core/UsageTimelineStrings.swift
         Sources/Vorssaint/Services/Media/MediaSupport.swift
         Sources/Vorssaint/Core/QuitProtectionSupport.swift
         Sources/Vorssaint/Core/QuitProtectionStrings.swift

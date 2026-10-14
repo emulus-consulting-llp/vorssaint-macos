@@ -3,6 +3,16 @@
 
 import Foundation
 
+/// Main-thread invalidation rejects a reply even while its AX read is blocked
+/// on the worker. Pause and deletion do not wait for that read to finish.
+final class UsageObservationGate {
+    private let lock = NSLock()
+    private var token = UUID()
+    var current: UUID { lock.withLock { token } }
+    func invalidate() { lock.withLock { token = UUID() } }
+    func accepts(_ value: UUID) -> Bool { lock.withLock { token == value } }
+}
+
 struct UsageMoment {
     var date: Date
     var uptime: TimeInterval
@@ -34,6 +44,15 @@ struct UsageConditions: Equatable {
         return .active
     }
     var canReadMetadata: Bool { presence == .active }
+
+    static func configured(previous: UsageConditions, current: UsageConditions,
+                           wasEnabled: Bool, wasPaused: Bool) -> UsageConditions {
+        // No session notifications are observed while paused. Resume needs a
+        // fresh system snapshot, including locks/wakes missed during the pause.
+        var result = !wasEnabled || wasPaused ? current : previous
+        result.paused = current.paused
+        return result
+    }
 }
 
 struct UsageForeground: Codable, Equatable {
@@ -45,7 +64,8 @@ struct UsageForeground: Codable, Equatable {
     var documentPath: String?
 
     static func documentPath(from value: String?) -> String? {
-        guard let value, let url = URL(string: value), url.isFileURL else { return nil }
+        guard let value, let url = URL(string: value), url.isFileURL,
+              url.host == nil || url.host == "" || url.host == "localhost" else { return nil }
         return url.standardizedFileURL.path
     }
 }
@@ -142,7 +162,7 @@ struct UsageReducer {
         let elapsed = max(0, moment.uptime - previous.uptime)
         // Keep clock discontinuities out of measured durations and split both
         // streams rather than stretching a visit across an adjusted clock.
-        if abs(moment.date.timeIntervalSince(previous.date) - elapsed) > 2 {
+        if moment.uptime >= previous.uptime && abs(moment.date.timeIntervalSince(previous.date) - elapsed) > 2 {
             let oldFocus = foreground?.foreground
             closeForeground(at: previous)
             extendPresence(to: previous)
@@ -223,10 +243,10 @@ struct UsageDay {
         let presence = spans.filter { $0.stream == .presence }.sorted { $0.start < $1.start }
         var entries: [UsageTimelineEntry] = []
         var cursor = bounded.start
-        func append(_ start: Date, _ end: Date, _ state: UsagePresence, _ focus: UsageForeground?, _ key: String) {
+        func append(_ start: Date, _ end: Date, _ state: UsagePresence, _ focus: UsageForeground?, _ key: String, rate: Double = 1) {
             guard end > start else { return }
             let entry = UsageTimelineEntry(id: key + ":" + String(start.timeIntervalSince1970), start: start,
-                                           end: end, duration: end.timeIntervalSince(start), state: state, foreground: focus)
+                                           end: end, duration: max(0, end.timeIntervalSince(start) * rate), state: state, foreground: focus)
             entries.append(entry)
         }
         for span in presence {
@@ -240,12 +260,14 @@ struct UsageDay {
                     let lower = max(focusedCursor, focus.start), upper = min(end, focus.end)
                     guard upper > lower else { continue }
                     append(focusedCursor, lower, .unrecorded, nil, "unknown")
-                    append(lower, upper, .active, focus.foreground, focus.id.uuidString)
+                    append(lower, upper, .active, focus.foreground, focus.id.uuidString,
+                           rate: focus.duration / max(0.001, focus.end.timeIntervalSince(focus.start)))
                     focusedCursor = upper
                 }
                 append(focusedCursor, end, .unrecorded, nil, "unknown")
             } else {
-                append(start, end, state, nil, span.id.uuidString)
+                append(start, end, state, nil, span.id.uuidString,
+                       rate: span.duration / max(0.001, span.end.timeIntervalSince(span.start)))
             }
             cursor = end
         }

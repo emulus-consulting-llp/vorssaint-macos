@@ -556,7 +556,7 @@ private enum UtilityPanelItem: String, PanelOrderItem, Identifiable {
     // are migrated once without disturbing the rest of the user's layout.
     case screenshot, quickLauncher, appUpdates, cleaner, homebrew, media, clipboard, windowLayout,
          uninstaller, cleanURL, cleaning, screenOCR, colorPicker, cameraPreview, scratchpad,
-         commandBar, screenRecorder, portManager
+         commandBar, screenRecorder, portManager, usageTimeline
 
     var id: String { rawValue }
 
@@ -582,6 +582,7 @@ private enum UtilityPanelItem: String, PanelOrderItem, Identifiable {
         case .scratchpad: return .scratchpad
         case .commandBar: return .commandBar
         case .portManager: return .portManager
+        case .usageTimeline: return .usageTimeline
         }
     }
 }
@@ -618,6 +619,7 @@ struct UtilitiesSection: View {
     @AppStorage(DefaultsKey.panelUtilityCommandBar) private var showCommandBar = true
     @AppStorage(DefaultsKey.panelUtilityScreenRecorder) private var showScreenRecorder = true
     @AppStorage(DefaultsKey.panelUtilityPortManager) private var showPortManager = true
+    @AppStorage(DefaultsKey.panelUtilityUsageTimeline) private var showUsageTimeline = true
     @ObservedObject private var recorder = ScreenRecorderService.shared
     @AppStorage(DefaultsKey.clipboardHistoryEnabled) private var clipboardEnabled = false
     @AppStorage(DefaultsKey.panelUtilityOrder) private var utilityOrderRaw = ""
@@ -782,6 +784,7 @@ struct UtilitiesSection: View {
         case .screenshot: return showScreenshot
         case .screenRecorder: return showScreenRecorder
         case .portManager: return showPortManager
+        case .usageTimeline: return showUsageTimeline
         }
     }
 
@@ -1026,6 +1029,17 @@ struct UtilitiesSection: View {
                                 showsDragHandle: true,
                                 visibility: $showPortManager,
                                 action: { showPortManagerPanel = true })
+        case .usageTimeline:
+            UtilityActionButton(title: UsageTimelineStrings(l10n.language)[.title],
+                                caption: UsageTimelineStrings(l10n.language)[.open],
+                                systemImage: "clock.arrow.circlepath",
+                                isEditing: editing,
+                                showsDragHandle: true,
+                                visibility: $showUsageTimeline,
+                                action: {
+                                    appDelegate()?.closePopover()
+                                    UsageTimelineWindowController.shared.show()
+                                })
         }
     }
 
@@ -1103,6 +1117,7 @@ struct UtilitiesSection: View {
         showQuickLauncher = true
         showCommandBar = true
         showPortManager = true
+        showUsageTimeline = true
     }
 
     private func grantAccessibility() {

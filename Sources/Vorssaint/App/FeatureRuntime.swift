@@ -390,6 +390,10 @@ final class FeatureRuntime: ObservableObject {
             }
         },
         .appUpdates: { AppUpdatesService.shared.syncWithPreferences() },
+        .usageTimeline: {
+            UsageTimelineService.shared.syncWithPreferences()
+            if !AppFeature.usageTimeline.isAvailable { UsageTimelineWindowController.shared.close() }
+        },
         .monitorCPU: { FeatureRuntime.syncMonitor() },
         .monitorGPU: { FeatureRuntime.syncMonitor() },
         .monitorMemory: { FeatureRuntime.syncMonitor() },

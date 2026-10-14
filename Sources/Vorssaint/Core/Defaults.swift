@@ -311,6 +311,12 @@ enum DefaultsKey {
     static let homebrewGroupDependencies = "homebrewGroupDependencies"
     static let panelUtilityAppUpdates = "panelUtilityAppUpdates"
     static let appUpdatesCheckFrequency = "appUpdatesCheckFrequency"  // off | daily | weekly
+    static let usageTimelineEnabled = "usageTimelineEnabled"
+    static let usageTimelinePaused = "usageTimelinePaused"
+    static let usageTimelineIdleMinutes = "usageTimelineIdleMinutes"
+    static let usageTimelineTitles = "usageTimelineTitles"
+    static let usageTimelinePaths = "usageTimelinePaths"
+    static let usageTimelineExcludedApps = "usageTimelineExcludedApps"
     static let appUpdatesIncludeHomebrewApps = "appUpdatesIncludeHomebrewApps"
     static let appUpdatesIncludeAppStore = "appUpdatesIncludeAppStore"
     static let appUpdatesIncludeOnlineCatalog = "appUpdatesIncludeOnlineCatalog"
@@ -726,6 +732,7 @@ enum DefaultsKey {
     static let recorderSharingEnabled = "recorderSharingEnabled"
     static let panelUtilityScreenRecorder = "panelUtilityScreenRecorder"
     static let panelUtilityPortManager = "panelUtilityPortManager"
+    static let panelUtilityUsageTimeline = "panelUtilityUsageTimeline"
 
     // Window Layout — snapping, global shortcuts and optional pointer gestures.
     static let windowLayoutShortcutsEnabled = "windowLayoutShortcutsEnabled"
@@ -1540,6 +1547,12 @@ enum Defaults {
         // The list itself costs nothing until it is opened; only the
         // background check keeps a timer, so it starts off.
         DefaultsKey.appUpdatesCheckFrequency: AppUpdatesSupport.CheckFrequency.off.rawValue,
+        DefaultsKey.usageTimelineEnabled: false,
+        DefaultsKey.usageTimelinePaused: false,
+        DefaultsKey.usageTimelineIdleMinutes: 5,
+        DefaultsKey.usageTimelineTitles: true,
+        DefaultsKey.usageTimelinePaths: true,
+        DefaultsKey.usageTimelineExcludedApps: [String](),
         DefaultsKey.appUpdatesIncludeHomebrewApps: true,
         DefaultsKey.appUpdatesIncludeAppStore: true,
         DefaultsKey.appUpdatesIncludeOnlineCatalog: true,
@@ -1822,6 +1835,7 @@ enum Defaults {
         DefaultsKey.recorderSharingEnabled: true,
         DefaultsKey.panelUtilityScreenRecorder: true,
         DefaultsKey.panelUtilityPortManager: true,
+        DefaultsKey.panelUtilityUsageTimeline: true,
         DefaultsKey.screenshotShowCaptureMenuOnShortcut: true,
         DefaultsKey.recorderShowCaptureMenuOnShortcut: true,
         DefaultsKey.screenOCRShowCaptureMenuOnShortcut: true,

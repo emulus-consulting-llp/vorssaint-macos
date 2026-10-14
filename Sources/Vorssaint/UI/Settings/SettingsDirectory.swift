@@ -358,6 +358,10 @@ enum SettingsDirectory {
                                       keywords: ["port", "ports", "listening", "socket", "PID", "kill port"]),
             ]),
             (categories.utilities, [
+                SettingsDirectoryItem(page: .usageTimeline,
+                                      title: UsageTimelineStrings(language)[.title],
+                                      icon: "clock.arrow.circlepath",
+                                      keywords: [UsageTimelineStrings(language)[.description], "activity", "usage", "timeline"]),
                 SettingsDirectoryItem(page: .notch,
                                       title: FeatureStrings.notch(language).title,
                                       icon: "macbook",
