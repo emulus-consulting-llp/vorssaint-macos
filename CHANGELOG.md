@@ -7,7 +7,7 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Summary
-The window switcher can limit its columns and reach fullscreen windows from the current desktop, screenshot previews copy text, recordings save as GIFs of any length, and window recordings keep only the sound of their app. App volumes in the Volume mixer follow perceived loudness, and AI Agents follows OpenCode 2. Dynamic Island finds lyrics across more catalog variations, shows the active audio output in volume feedback and announces keyboard layout changes, with fixes for volume keys, mouse navigation, Dock instances, M4 Pro temperatures and Command Bar.
+The window switcher offers column limits and clearer app filtering. Screenshots copy text, recordings export longer GIFs and isolate window audio, and mixer sliders follow perceived loudness. AI Agents supports OpenCode 2 and safer Claude renewal estimates. Dynamic Island improves lyrics, companion playback and keyboard focus. Cleaning Mode keeps input taps suspended, alongside fixes for volume keys, mouse navigation, Dock instances, M4 Pro temperatures and Command Bar.
 
 ### Added
 - Dynamic Island can show the keyboard input source when it changes. Command Bar's temporary layout switches stay quiet. Settings → Dynamic Island → Activity → Indicators.
@@ -21,6 +21,11 @@ The window switcher can limit its columns and reach fullscreen windows from the 
 - Recording a single window captures only the sound of the app that owns it.
 
 ### Fixed
+- Playing music takes the idle companion's place in Dynamic Island and stays selectable alongside AI activity.
+- Dynamic Island hides its automatic opening focus ring and restores visible focus when keyboard navigation begins.
+- AI Agents estimates Claude session renewals after long gaps without discarding observed usage or sending reset alerts at the estimate.
+- Cleaning Mode keeps middle click and debounce suspended. Stopping input taps for permission cleanup or shutdown no longer restarts them.
+- Window switcher settings explain why replacing macOS app shortcuts locks the choices for apps with no open window.
 - Lyrics lookup handles differences in titles, albums and artist credits, using bounded searches and verified artist aliases while rejecting incompatible recordings and unknown collaborators.
 - Volume feedback uses the selected headphones or AirPods icon, including when muted or at zero volume.
 - Mouse navigation handles quick changes between Back and Forward when the app's menu state has not caught up.
@@ -34,7 +39,7 @@ The window switcher can limit its columns and reach fullscreen windows from the 
 - Command Bar finds the tools Xcode keeps inside its bundle, such as Simulator, Instruments and Device Hub, and the uninstaller refuses apps that live inside another app.
 
 ### Contributors
-Thanks to @AB-boi, @ahmedabdullah-o, @beckhauser, @benjcrich, @COMEBACKISREAL, @eioz, @EugeneCarldotme, @Hackmodford, @iancenry, @JeanBaeez, @Likheet, @ManuLorenzzo, @mohammadhprp, @ncesar, @oskarsss, @PratikPawar1401, @unfilet and @ywu73.
+Thanks to @AB-boi, @Adridot, @ahmedabdullah-o, @beckhauser, @benjcrich, @COMEBACKISREAL, @eioz, @EugeneCarldotme, @gustavoramalho, @Hackmodford, @iancenry, @JeanBaeez, @juanra, @Likheet, @ManuLorenzzo, @mohammadhprp, @ncesar, @oskarsss, @PratikPawar1401, @unfilet, @ywu73 and @zhanghk2001.
 
 ## [3.4.1] - 2026-10-08
 

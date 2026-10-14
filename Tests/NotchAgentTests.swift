@@ -2808,6 +2808,60 @@ enum NotchAgentTests {
                         && AgentClaudeAppUsage.limits(from: samples, now: now, sessionStart: at("2026-09-23T13:40:00Z"))?
                         .windows.first?.resetsAt == at("2026-09-23T19:05:00Z"),
                      "Claude Code's first request places the session only inside the gap the readings leave")
+        // Readings hours apart leave the start anywhere between them, and the
+        // first one above zero is only the latest it can have been.
+        let slept = AgentClaudeAppUsage.samples(from: history([
+            ("2026-10-12T12:26:00Z", "o", ["fh": 2, "sd": 9]), ("2026-10-12T19:03:00Z", "o", ["fh": 4, "sd": 11])])) ?? []
+        let sleptReset = AgentClaudeAppUsage.limits(from: slept, now: at("2026-10-12T19:04:00Z"))?.windows.first?.estimatedResetsAt
+        suite.expect(sleptReset == at("2026-10-12T21:33:00Z"),
+                     "a session first read after sleep estimates the midpoint instead of the latest possible renewal")
+        let overnight = AgentClaudeAppUsage.samples(from: history([
+            ("2026-10-11T23:00:00Z", "o", ["fh": 0, "sd": 40]), ("2026-10-12T11:59:00Z", "o", ["fh": 29, "sd": 41])])) ?? []
+        let overnightReset = AgentClaudeAppUsage.limits(from: overnight, now: at("2026-10-12T12:32:00Z"))?.windows.first?.estimatedResetsAt
+        suite.expect(overnightReset == at("2026-10-12T14:29:00Z"),
+                     "an overnight gap keeps the renewal between the reading and five hours after it")
+        let lone = AgentClaudeAppUsage.samples(from: history([("2026-10-12T19:03:00Z", "o", ["fh": 4, "sd": 11])])) ?? []
+        suite.expect(AgentClaudeAppUsage.limits(from: lone, now: at("2026-10-12T19:04:00Z"))?.windows.first?.resetsAt
+                        == at("2026-10-13T00:03:00Z"),
+                     "a file that starts with the session has nothing before it to bracket the start")
+        let gap = AgentClaudeAppUsage.samples(from: history([
+            ("2026-10-12T00:00:00Z", "o", ["fh": 0]), ("2026-10-12T08:00:00Z", "o", ["fh": 90]),
+            ("2026-10-12T08:10:00Z", "o", ["fh": 95]), ("2026-10-12T10:40:00Z", "o", ["fh": 100])])) ?? []
+        let beforeEstimate = AgentClaudeAppUsage.limits(from: Array(gap.prefix(3)), now: at("2026-10-12T08:10:00Z"))
+        let afterEstimate = AgentClaudeAppUsage.limits(from: gap, now: at("2026-10-12T10:40:00Z"))
+        if let window = afterEstimate?.windows.first, let warned = beforeEstimate?.windows.first {
+            let now = at("2026-10-12T10:40:00Z")
+            suite.expect(window.usedPercent == 100 && AgentLimitSupport.current(window, at: now).usedPercent == 100,
+                         "fresh increasing usage survives the estimated renewal in the reader and the display")
+            suite.expect(window.estimatedResetsAt == at("2026-10-12T10:30:00Z")
+                            && AgentLimitSupport.displayedReset(window, now: now) == nil
+                            && AgentLimitSupport.pace(for: window, now: now) == nil,
+                         "an elapsed estimate hides the countdown and pace without clearing usage")
+            suite.expect(warned.resetsAt == at("2026-10-12T13:00:00Z") && window.resetsAt == warned.resetsAt,
+                         "a warning keeps the latest possible renewal, so the midpoint cannot send a reset alert")
+            suite.expect(AgentLimitSupport.crossings(previous: beforeEstimate, current: afterEstimate!, threshold: 90).isEmpty,
+                         "continuing usage after the midpoint does not become another threshold crossing")
+            suite.expect(AgentLimitSupport.displayedReset(warned, now: at("2026-10-12T09:00:00Z"))
+                            == at("2026-10-12T10:30:00Z"),
+                         "the card still shows the useful midpoint while it is in the future")
+        } else {
+            suite.expect(false, "fresh observed session usage must remain present after its estimated renewal")
+        }
+        suite.expect(AgentClaudeAppUsage.limits(from: Array(gap.prefix(3)), now: at("2026-10-12T10:40:00Z"))?
+                        .windows.first?.usedPercent == 95,
+                     "the midpoint alone cannot discard a reading between Claude app checks")
+        let placedGap = AgentClaudeAppUsage.limits(from: gap, now: at("2026-10-12T10:40:00Z"),
+                                                   sessionStart: at("2026-10-12T07:55:00Z"))?.windows.first
+        suite.expect(placedGap?.resetsAt == at("2026-10-12T12:55:00Z") && placedGap?.estimatedResetsAt == nil,
+                     "a first request within the gap replaces the presentation estimate with its known start")
+        suite.expect(AgentClaudeAppUsage.limits(from: gap, now: at("2026-10-12T13:00:00Z")) == nil,
+                     "an estimated window still expires at its latest possible renewal")
+        let dropped = gap + [AgentClaudeAppUsage.Sample(date: at("2026-10-12T10:50:00Z"), organization: "o", used: ["fh": 0]),
+                             AgentClaudeAppUsage.Sample(date: at("2026-10-12T11:00:00Z"), organization: "o", used: ["fh": 2])]
+        let newSession = AgentClaudeAppUsage.limits(from: dropped, now: at("2026-10-12T11:00:00Z"))?.windows.first
+        suite.expect(newSession?.usedPercent == 2 && newSession?.estimatedResetsAt == nil
+                        && newSession?.resetsAt == at("2026-10-12T16:00:00Z"),
+                     "an observed renewal starts a new window without retaining the old estimate")
         let requests = [record(.claude, at("2026-09-23T13:55:00Z"), cost: 1), record(.claude, at("2026-09-23T18:58:00Z"), cost: 1)]
         let placed = AgentClaudeAppUsage.sessionStart(requests, samples: samples)
         let ended = at("2026-09-23T19:00:00Z")
