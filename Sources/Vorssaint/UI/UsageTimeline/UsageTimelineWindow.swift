@@ -8,11 +8,13 @@ final class UsageTimelineWindowController: NSObject, ObservableObject, NSWindowD
     static let shared = UsageTimelineWindowController()
     @Published private(set) var visible = false
     @Published private(set) var refreshTick = 0
+    @Published private(set) var requestedDate = Date()
     private var window: NSWindow?
     private var refreshTimer: Timer?
 
-    func show() {
+    func show(date: Date = Date()) {
         guard AppFeature.usageTimeline.isAvailable else { return }
+        requestedDate = date
         UsageTimelineService.shared.syncWithPreferences()
         if window == nil {
             let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 960, height: 640),
@@ -103,6 +105,7 @@ struct UsageTimelineView: View {
             .panelGlassSurface()
         }
         .onAppear { refresh() }
+        .onChange(of: controller.requestedDate, initial: true) { _, date in selectedDate = date }
         .onChange(of: controller.visible) { _, visible in if visible { refresh() } }
         .onChange(of: controller.refreshTick) { _, _ in refresh() }
         .onChange(of: selectedDate) { _, _ in

@@ -498,6 +498,12 @@ struct NotchSettings: View {
         case .watch:
             NotchWatchSettingsControls()
                 .toggleStyle(TrailingSwitchToggleStyle())
+        case .usageTimeline:
+            let timeline = UsageTimelineStrings(l10n.language)
+            Text(timeline[.description]).font(.callout).foregroundStyle(.secondary)
+            Button(timeline[.settings]) {
+                SettingsRouter.shared.page = .usageTimeline
+            }
         case .mixer, .system, .tools:
             EmptyView()
         }
@@ -816,6 +822,7 @@ struct NotchSettings: View {
         case .scratchpad: return .scratchpad
         case .agents: return .notchAgents
         case .watch: return .notchWatch
+        case .usageTimeline: return .usageTimeline
         }
     }
 
