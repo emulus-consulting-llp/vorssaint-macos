@@ -2854,7 +2854,7 @@ enum NotchAgentTests {
                                                    sessionStart: at("2026-10-12T07:55:00Z"))?.windows.first
         suite.expect(placedGap?.resetsAt == at("2026-10-12T12:55:00Z") && placedGap?.estimatedResetsAt == nil,
                      "a first request within the gap replaces the presentation estimate with its known start")
-        suite.expect(AgentClaudeAppUsage.limits(from: gap, now: at("2026-10-12T13:00:00Z")) == nil,
+        suite.expect(AgentClaudeAppUsage.limits(from: gap, now: at("2026-10-12T13:00:00Z"))?.windows == [],
                      "an estimated window still expires at its latest possible renewal")
         let dropped = gap + [AgentClaudeAppUsage.Sample(date: at("2026-10-12T10:50:00Z"), organization: "o", used: ["fh": 0]),
                              AgentClaudeAppUsage.Sample(date: at("2026-10-12T11:00:00Z"), organization: "o", used: ["fh": 2])]
