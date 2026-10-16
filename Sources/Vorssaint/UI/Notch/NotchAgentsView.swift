@@ -138,11 +138,13 @@ private struct NotchAgentLimitsCard: View {
     let quotaState: AgentAntigravityUsage.State
     @Environment(\.locale) private var locale
 
+    private var isQuotaPool: Bool { provider == .gemini || provider == .agy }
+
     /// A reading the Claude app saved a while ago: still the latest known,
     /// shown quieter until the app checks again.
     private var stale: Bool {
         guard let limits = snapshot.limits[provider] else { return false }
-        if !provider.supportsAnalytics {
+        if isQuotaPool {
             return quotaState != .live || now.timeIntervalSince(limits.observedAt) >= AgentAntigravityUsage.freshness
         }
         return limits.source == .claudeApp && now.timeIntervalSince(limits.observedAt) >= AgentClaudeAppUsage.freshness
@@ -150,8 +152,7 @@ private struct NotchAgentLimitsCard: View {
 
     /// Two rows fit: the session and whichever longer window binds first.
     private var windows: [AgentLimitWindow] {
-        let all = provider.supportsAnalytics ? AgentLimitSupport.displayWindows(snapshot.limits[provider], now: now)
-            : (snapshot.limits[provider]?.windows ?? [])
+        let all = AgentLimitSupport.displayWindows(snapshot.limits[provider], now: now)
         let session = all.first { $0.kind == .session }
         let longer = all.filter { $0.kind != .session }.max { $0.usedPercent < $1.usedPercent }
         return [session, longer].compactMap { $0 }
@@ -165,7 +166,7 @@ private struct NotchAgentLimitsCard: View {
                 NotchAgentCardHeader(title: provider.displayName, symbol: provider.symbol, tint: provider.tint,
                                      provider: provider) {
                     HStack(spacing: 4) {
-                        if !provider.supportsAnalytics, stale {
+                        if isQuotaPool, stale {
                             NotchAgentChip(text: quotaText.cached, tint: .secondary)
                         }
                         if let plan = snapshot.plans[provider] { NotchAgentChip(text: plan.name, tint: provider.tint) }
@@ -173,7 +174,7 @@ private struct NotchAgentLimitsCard: View {
                     }
                 }
                 if windows.isEmpty && pending.isEmpty {
-                    if !provider.supportsAnalytics {
+                    if isQuotaPool {
                         Text(quotaState == .loading ? text.loading :
                             snapshot.limits[provider] == nil ? quotaText.unavailable : quotaText.waiting)
                             .font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(2)
@@ -182,7 +183,7 @@ private struct NotchAgentLimitsCard: View {
                     VStack(spacing: 5) {
                         if pending.contains(.session) { pendingRow(.session) }
                         ForEach(windows) { window in
-                            if !provider.supportsAnalytics, (window.resetsAt ?? .distantPast) <= now {
+                            if isQuotaPool, (window.resetsAt ?? .distantPast) <= now {
                                 VStack(alignment: .leading, spacing: 2) {
                                     HStack(spacing: 5) {
                                         Text(label(window)).font(.system(size: 10, weight: .medium))
@@ -204,7 +205,7 @@ private struct NotchAgentLimitsCard: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .help(!provider.supportsAnalytics ? quotaHelp : "")
+        .help(isQuotaPool ? quotaHelp : "")
     }
 
     private var quotaHelp: String {

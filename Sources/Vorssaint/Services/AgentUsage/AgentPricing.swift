@@ -211,11 +211,22 @@ enum AgentPricing {
     static let siblings = ["mini", "nano", "pro", "lite", "research", "search", "audio", "realtime",
                            "transcribe", "tts", "cyber", "image"]
 
+    /// Fallback API list rates for Gemini models in US dollars per million tokens.
+    static let fallbackGeminiModels: [AgentPriceList.Model] = [
+        .init(id: "gemini-2.5-pro", price: AgentPrice(input: 1.25, output: 5.0, cacheRead: 0.3125, cacheWrite: 1.25, cacheWriteLong: 1.25)),
+        .init(id: "gemini-2.5-flash", price: AgentPrice(input: 0.10, output: 0.40, cacheRead: 0.025, cacheWrite: 0.10, cacheWriteLong: 0.10)),
+        .init(id: "gemini-3.8-flash", price: AgentPrice(input: 0.10, output: 0.40, cacheRead: 0.025, cacheWrite: 0.10, cacheWriteLong: 0.10)),
+        .init(id: "gemini-1.5-pro", price: AgentPrice(input: 1.25, output: 5.0, cacheRead: 0.3125, cacheWrite: 1.25, cacheWriteLong: 1.25)),
+        .init(id: "gemini-1.5-flash", price: AgentPrice(input: 0.075, output: 0.30, cacheRead: 0.01875, cacheWrite: 0.075, cacheWriteLong: 0.075)),
+        .init(id: "gemini-pro", price: AgentPrice(input: 1.25, output: 5.0, cacheRead: 0.3125, cacheWrite: 1.25, cacheWriteLong: 1.25)),
+        .init(id: "gemini-flash", price: AgentPrice(input: 0.10, output: 0.40, cacheRead: 0.025, cacheWrite: 0.10, cacheWriteLong: 0.10)),
+    ]
+
     /// The longest matching family wins, so a point release the list names
     /// never inherits the price of the version it extends.
     static func price(for model: String, in list: AgentPriceList = AgentPricing.list) -> AgentPrice? {
         let id = normalized(model)
-        let table = id.hasPrefix("claude-") ? list.claude : list.codex
+        let table = id.hasPrefix("claude-") ? list.claude : (id.hasPrefix("gemini-") ? fallbackGeminiModels : list.codex)
         guard let match = table.filter({ matches(id, family: $0.id) })
             .max(by: { $0.id.count < $1.id.count }) else { return nil }
         // A smaller, larger or specialized sibling the list does not name is
@@ -282,6 +293,13 @@ enum AgentPricing {
             let version = versions.joined(separator: ".")
             let name = [words.first?.capitalized ?? "", version] + words.dropFirst().map(\.capitalized)
             return name.filter { !$0.isEmpty }.joined(separator: " ")
+        }
+        if id.hasPrefix("gemini-") {
+            var parts = id.dropFirst(7).split(separator: "-").map(String.init)
+            parts.removeAll { $0 == "latest" }
+            parts.removeAll { $0.count >= 6 && $0.allSatisfy(\.isNumber) }
+            guard let first = parts.first else { return "Gemini" }
+            return (["Gemini", first] + parts.dropFirst().map(\.capitalized)).joined(separator: " ")
         }
         guard id.hasPrefix("gpt-") else { return id }
         var parts = id.dropFirst(4).split(separator: "-").map(String.init)

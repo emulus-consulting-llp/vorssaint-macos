@@ -474,6 +474,7 @@ struct AgentLogRoot: Equatable {
     /// link elsewhere, as dotfile setups do, would otherwise never match.
     static func all(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> [AgentLogRoot] {
         [(AgentProvider.claude, ".claude/projects"), (.claude, ".config/claude/projects"),
+         (.gemini, ".gemini/antigravity-cli/brain"),
          (.codex, ".codex/sessions"), (.codex, ".codex/archived_sessions"),
          (.opencode, ".local/share/opencode"), (.copilot, ".copilot/session-state")].map { provider, path in
             AgentLogRoot(provider: provider, url: canonical(home.appending(path: path, directoryHint: .isDirectory)))
@@ -498,6 +499,7 @@ struct AgentLogRoot: Equatable {
         let prefix = url.path + "/"
         guard path.hasPrefix(prefix) else { return false }
         if provider == .opencode { return path == url.appending(path: AgentOpenCodeReader.database).path }
+        if provider == .gemini { return (path as NSString).lastPathComponent == "transcript.jsonl" }
         guard path.hasSuffix(".jsonl") else { return false }
         guard provider == .copilot else { return true }
         let parts = path.dropFirst(prefix.count).split(separator: "/", omittingEmptySubsequences: false)
@@ -576,6 +578,13 @@ final class AgentLogCursor {
         let parent = provider == .claude ? AgentLogCursor.parent(of: path) : nil
         self.parent = parent
         tracksTurns = provider == .claude ? parent == nil : (provider == .codex ? !name.contains("_") : true)
+        if provider == .gemini {
+            let parts = path.split(separator: "/")
+            if let brainIndex = parts.firstIndex(of: "brain"), brainIndex + 1 < parts.count {
+                state.session = String(parts[brainIndex + 1])
+                state.project = state.session
+            }
+        }
     }
 
     /// Where reading stopped, at a line boundary: a line still being written
@@ -735,6 +744,14 @@ enum AgentLogReader {
                 let sessions = (try? FileManager.default.contentsOfDirectory(
                     at: root.url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []
                 for session in sessions { include(session.appending(path: "events.jsonl"), from: root) }
+                continue
+            }
+            if root.provider == .gemini {
+                let sessions = (try? FileManager.default.contentsOfDirectory(
+                    at: root.url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []
+                for session in sessions {
+                    include(session.appending(path: ".system_generated/logs/transcript.jsonl"), from: root)
+                }
                 continue
             }
             guard let enumerator = FileManager.default.enumerator(at: root.url, includingPropertiesForKeys: keys,

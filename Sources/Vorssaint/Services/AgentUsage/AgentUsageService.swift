@@ -250,7 +250,7 @@ final class AgentUsageService: ObservableObject {
 
     /// Runs on the main thread. Quota work never blocks log ingestion or UI updates.
     private func requestQuota(force: Bool = false) {
-        guard running, !paused, providers.contains(where: { !$0.supportsAnalytics }), !quotaInFlight,
+        guard running, !paused, providers.contains(where: { $0 == .gemini || $0 == .agy }), !quotaInFlight,
               Date().timeIntervalSince(quotaAttempted) >= (force ? 5 : 60) else { return }
         quotaInFlight = true
         quotaAttempted = Date()
@@ -526,10 +526,11 @@ final class AgentUsageService: ObservableObject {
             let entries: [AgentLogEntry]
             switch provider {
             case .claude: entries = AgentLogParser.parseClaude(line, state: &cursor.state, now: now)
+            case .gemini: entries = AgentLogParser.parseGemini(line, state: &cursor.state, now: now)
             case .codex: entries = AgentLogParser.parseCodex(line, state: &cursor.state, now: now)
             case .opencode: entries = AgentLogParser.parseOpenCode(line, state: &cursor.state, now: now)
             case .copilot: entries = AgentLogParser.parseCopilot(line, state: &cursor.state, now: now)
-            case .gemini, .agy: entries = [] // Quota pools have no supported session-log reader.
+            case .agy: entries = [] // Quota pool has no supported session-log reader.
             }
             guard !entries.isEmpty else { return }
             changed = true
@@ -706,7 +707,7 @@ final class AgentUsageService: ObservableObject {
         for (provider, limits) in store.limits {
             // Remote quota pools are display-only in this release. Cached or
             // expired observations must never announce a warning or renewal.
-            guard provider.supportsAnalytics else { continue }
+            guard provider != .gemini && provider != .agy else { continue }
             for window in AgentLimitSupport.crossings(previous: previousLimits[provider], current: limits,
                                                       threshold: threshold) {
                 warned[window.id] = (provider, window)
@@ -716,7 +717,7 @@ final class AgentUsageService: ObservableObject {
         // A banked reset renews a warned window before its time, which is
         // news now rather than at the renewal it replaced.
         for (id, entry) in warned {
-            guard entry.provider.supportsAnalytics,
+            guard entry.provider != .gemini && entry.provider != .agy,
                   let window = store.limits[entry.provider]?.windows.first(where: { $0.id == id }),
                   let was = entry.window.resetsAt, let resets = window.resetsAt,
                   resets.timeIntervalSince(was) > 60, window.usedPercent < threshold else { continue }
@@ -730,7 +731,7 @@ final class AgentUsageService: ObservableObject {
     private func reportRenewals(now: Date) {
         for (id, entry) in warned {
             // A timer alone cannot confirm that a remote quota has renewed.
-            guard entry.provider.supportsAnalytics else { continue }
+            guard entry.provider != .gemini && entry.provider != .agy else { continue }
             guard let resets = entry.window.resetsAt, resets <= now else { continue }
             warned[id] = nil
             report(.limitReset(provider: entry.provider, window: entry.window))

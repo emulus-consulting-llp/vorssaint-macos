@@ -95,7 +95,7 @@ enum NotchAgentSupport {
 
     /// Explicitly enabled quota providers show a card even without session logs.
     static func visibleProviders(enabled: [AgentProvider], seen: Set<AgentProvider>) -> [AgentProvider] {
-        enabled.filter { !$0.supportsAnalytics || seen.contains($0) }
+        enabled.filter { $0 == .agy || $0 == .gemini || seen.contains($0) }
     }
 
     /// Every card in the saved order; cards added later join at the end.

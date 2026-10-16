@@ -93,8 +93,8 @@ enum AgentAntigravityTests {
                      "the new toggles participate in settings backups")
         let visible = NotchAgentSupport.visibleProviders(enabled: [.claude, .gemini, .agy, .codex], seen: [.codex])
         suite.expect(visible == [.gemini, .agy, .codex], "quota cards stay visible without changing existing agent visibility")
-        suite.expect(visible.filter(\.supportsAnalytics) == [.codex], "quota providers cannot become idle analytics rows")
-        suite.expect(NotchAgentSupport.tiles(cards: [.limits, .live, .spend, .resets], providers: [.gemini, .agy]).map(\.card) == [.limits, .limits],
+        suite.expect(visible.filter(\.supportsAnalytics) == [.gemini, .codex], "Gemini supports analytics while AGY remains quota-only")
+        suite.expect(NotchAgentSupport.tiles(cards: [.limits, .live, .spend, .resets], providers: [.agy]).map(\.card) == [.limits],
                      "a quota-only page has no fabricated spend/live/reset-credit cards")
         let quotaTiles = NotchAgentSupport.tiles(cards: [.limits], providers:
             NotchAgentSupport.visibleProviders(enabled: [.gemini, .agy], seen: []))
@@ -112,6 +112,7 @@ enum AgentAntigravityTests {
             suite.expect([text.geminiPool, text.agyPool, text.waiting, text.unavailable, text.cached].allSatisfy { !$0.isEmpty },
                          "quota states have text in \(language.rawValue)")
         }
+        testGeminiParser(suite, now: now)
         lifecycle(suite, executable: executable, processText: processText, data: data)
     }
 
@@ -138,5 +139,62 @@ enum AgentAntigravityTests {
         }
         suite.expect(delivered.wait(timeout: .now() + 2) == .success, "a new request can run after cancellation")
         reader.cancel()
+    }
+
+    private static func testGeminiParser(_ suite: TestSuite, now: Date) {
+        var state = AgentLogState()
+        state.session = "test-session-123"
+
+        // 1. User input starts a turn and detects workspace
+        let userInput = """
+        {"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-10-15T09:31:59Z","content":"Command Working Directory: /Users/test/Code/my-app\\n<USER_SETTINGS_CHANGE>\\nThe user changed setting `Model Selection` from None to Gemini 3.8 Flash (High).\\n</USER_SETTINGS_CHANGE>"}
+        """.data(using: .utf8)!
+        let userEntries = AgentLogParser.parseGemini(userInput, state: &state, now: now)
+        suite.expect(state.turnOpen, "user input opens turn")
+        suite.expect(state.project == "my-app", "project is extracted from workspace")
+        suite.expect(state.model == "gemini-3.8-flash", "model selection is parsed")
+        suite.expect(userEntries.contains(where: { if case .turnBegan = $0 { return true }; return false }), "turn began is emitted")
+
+        // 2. Planner response with tool calls keeps turn active and records usage
+        let toolCallStep = """
+        {"step_index":2,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-10-15T09:32:00Z","input_tokens":1000,"cache_read_tokens":500,"output_tokens":200,"tool_calls":[{"name":"run_command","args":{"Cwd":"/Users/test/Code/my-app"}}]}
+        """.data(using: .utf8)!
+        let toolEntries = AgentLogParser.parseGemini(toolCallStep, state: &state, now: now)
+        suite.expect(state.turnOpen, "turn stays open during tool calls")
+        suite.expect(toolEntries.contains(where: { if case .turnActive = $0 { return true }; return false }), "turn active is emitted")
+        let usage = toolEntries.compactMap { entry -> AgentUsageRecord? in
+            if case .usage(_, let record, _) = entry { return record }
+            return nil
+        }.first
+        suite.expect(usage != nil && usage?.tokens.input == 1000 && usage?.tokens.cacheRead == 500 && usage?.tokens.output == 200,
+                     "tokens are captured in usage record")
+        suite.expect((usage?.cost ?? 0) > 0, "Gemini token cost is priced")
+
+        // 3. Final response without tool calls ends turn
+        let finalStep = """
+        {"step_index":5,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-10-15T09:32:05Z","input_tokens":1200,"cache_read_tokens":600,"output_tokens":400,"tool_calls":[]}
+        """.data(using: .utf8)!
+        let finalEntries = AgentLogParser.parseGemini(finalStep, state: &state, now: now)
+        suite.expect(!state.turnOpen, "final response closes turn")
+        suite.expect(finalEntries.contains(where: { if case .turnEnded(_, let completed, _) = $0 { return completed }; return false }),
+                     "turn ended is emitted as completed")
+
+        // 4. Log root and cursor init
+        let roots = AgentLogRoot.all(home: URL(fileURLWithPath: "/Users/test"))
+        let geminiRoot = roots.first { $0.provider == .gemini }
+        suite.expect(geminiRoot != nil, "Gemini log root is registered")
+        suite.expect(geminiRoot?.accepts("/Users/test/.gemini/antigravity-cli/brain/uuid-1/transcript.jsonl") == true,
+                     "Gemini root accepts transcript.jsonl")
+        suite.expect(geminiRoot?.accepts("/Users/test/.gemini/antigravity-cli/brain/uuid-1/transcript_full.jsonl") == false,
+                     "Gemini root ignores transcript_full.jsonl")
+
+        let cursor = AgentLogCursor(path: "/Users/test/.gemini/antigravity-cli/brain/session-xyz/.system_generated/logs/transcript.jsonl", provider: .gemini)
+        suite.expect(cursor.state.session == "session-xyz", "session ID is extracted from path")
+
+        // 5. Pricing and display names
+        suite.expect(AgentPricing.displayName("gemini-3.8-flash") == "Gemini 3.8 Flash", "displayName formats 3.8 Flash")
+        suite.expect(AgentPricing.displayName("gemini-2.5-pro") == "Gemini 2.5 Pro", "displayName formats 2.5 Pro")
+        suite.expect(AgentPricing.price(for: "gemini-2.5-pro") != nil, "pricing known for gemini-2.5-pro")
+        suite.expect(AgentPricing.price(for: "gemini-3.8-flash") != nil, "pricing known for gemini-3.8-flash")
     }
 }

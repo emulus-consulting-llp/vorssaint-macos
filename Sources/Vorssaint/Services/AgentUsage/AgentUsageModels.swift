@@ -34,8 +34,8 @@ enum AgentProvider: String, CaseIterable, Identifiable, Codable {
 
     /// Whether the provider records a plan allowance in its local logs.
     var reportsLimits: Bool { self != .copilot }
-    var supportsAnalytics: Bool { self != .gemini && self != .agy }
-    var enabledByDefault: Bool { supportsAnalytics }
+    var supportsAnalytics: Bool { self != .agy }
+    var enabledByDefault: Bool { self != .gemini && self != .agy }
 }
 
 /// Token counts in the shape both logs can be reduced to. `input` excludes

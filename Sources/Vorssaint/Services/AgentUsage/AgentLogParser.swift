@@ -886,6 +886,134 @@ enum AgentLogParser {
         return .other
     }
 
+    // MARK: Gemini (Antigravity)
+
+    static func parseGemini(_ line: Data, state: inout AgentLogState, now: Date) -> [AgentLogEntry] {
+        guard contains(line, #""type":""#) else { return [] }
+        guard let json = object(line), let type = json["type"] as? String else { return [] }
+        let date = (json["created_at"] as? String).flatMap(timestamp) ?? now
+
+        switch type {
+        case "USER_INPUT":
+            if let content = json["content"] as? String {
+                if let project = extractAntigravityProject(content) {
+                    state.project = project
+                }
+                if let model = extractAntigravityModel(content) {
+                    state.model = model
+                }
+            }
+            if state.model.isEmpty { state.model = "gemini-2.5-pro" }
+            var entries: [AgentLogEntry] = []
+            if state.turnOpen {
+                entries.append(.turnEnded(date, completed: false, duration: nil))
+            }
+            state.turnOpen = true
+            entries.append(.turnBegan(date))
+            entries.append(.turnContext(model: state.model, project: state.project))
+            return entries
+
+        case "PLANNER_RESPONSE":
+            let inputTokens = int(json["input_tokens"])
+            let outputTokens = int(json["output_tokens"])
+            let cacheReadTokens = int(json["cache_read_tokens"])
+            let stepIndex = int(json["step_index"])
+            let toolCalls = json["tool_calls"] as? [[String: Any]] ?? []
+
+            if state.project.isEmpty {
+                for call in toolCalls {
+                    if let args = call["args"] as? [String: Any],
+                       let cwd = args["Cwd"] as? String, !cwd.isEmpty {
+                        state.project = projectName(cwd)
+                        break
+                    }
+                }
+            }
+
+            if state.model.isEmpty { state.model = "gemini-2.5-pro" }
+            var entries: [AgentLogEntry] = []
+
+            if inputTokens > 0 || outputTokens > 0 || cacheReadTokens > 0 {
+                var billable = AgentBillable()
+                billable.tokens = AgentTokens(
+                    input: inputTokens,
+                    cacheWrite: 0,
+                    cacheRead: cacheReadTokens,
+                    output: outputTokens,
+                    reasoning: 0
+                )
+                let key = "gemini:\(state.session):step:\(stepIndex)"
+                let priced = AgentPricing.cost(billable, model: state.model)
+                entries.append(.usage(key: key, record: AgentUsageRecord(
+                    provider: .gemini, date: date, model: state.model, project: state.project,
+                    session: state.session, tokens: billable.tokens, cost: priced.cost, savings: priced.savings
+                ), billable: billable))
+            }
+
+            if !toolCalls.isEmpty {
+                if !state.turnOpen {
+                    state.turnOpen = true
+                    entries.insert(.turnBegan(date), at: 0)
+                } else {
+                    entries.append(.turnActive(date))
+                }
+            } else {
+                if state.turnOpen {
+                    state.turnOpen = false
+                    entries.append(.turnEnded(date, completed: true, duration: nil))
+                }
+            }
+            return entries
+
+        case "GENERIC", "EPHEMERAL_MESSAGE":
+            if state.turnOpen {
+                return [.turnActive(date)]
+            }
+            return []
+
+        default:
+            return []
+        }
+    }
+
+    private static func extractAntigravityProject(_ content: String) -> String? {
+        let lines = content.split(separator: "\n")
+        for line in lines {
+            if line.hasPrefix("Command Working Directory:") {
+                let path = line.dropFirst("Command Working Directory:".count).trimmingCharacters(in: .whitespaces)
+                if !path.isEmpty { return projectName(path) }
+            }
+            if line.hasPrefix("- /") {
+                let path = line.dropFirst(2).trimmingCharacters(in: .whitespaces)
+                if !path.isEmpty { return projectName(path) }
+            }
+        }
+        return nil
+    }
+
+    private static func extractAntigravityModel(_ content: String) -> String? {
+        guard let range = content.range(of: "Model Selection` from") ?? content.range(of: "Model Selection from") else {
+            return nil
+        }
+        let after = content[range.upperBound...]
+        if let toRange = after.range(of: "to ") {
+            let modelText = after[toRange.upperBound...].prefix(while: { $0 != "\n" && $0 != "(" && $0 != "<" })
+                .trimmingCharacters(in: .whitespaces).lowercased()
+            if modelText.contains("flash") {
+                if modelText.contains("3.8") { return "gemini-3.8-flash" }
+                if modelText.contains("2.5") { return "gemini-2.5-flash" }
+                if modelText.contains("1.5") { return "gemini-1.5-flash" }
+                return "gemini-flash"
+            }
+            if modelText.contains("pro") {
+                if modelText.contains("2.5") { return "gemini-2.5-pro" }
+                if modelText.contains("1.5") { return "gemini-1.5-pro" }
+                return "gemini-pro"
+            }
+        }
+        return nil
+    }
+
     // MARK: Shared values
 
     /// The folder an agent ran in names the project. A worktree kept inside

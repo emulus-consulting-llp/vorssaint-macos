@@ -20,7 +20,7 @@ enum AgentAntigravityUsage {
     /// Select one complete source group, not a mixture of pools from separate observations.
     static func resolved(_ reading: Reading, previous: [AgentProvider: AgentLimits]) -> Reading {
         guard reading.state != .live else { return reading }
-        let previous = previous.filter { !$0.key.supportsAnalytics }
+        let previous = previous.filter { $0.key == .gemini || $0.key == .agy }
         let oldTime = previous.values.map(\.observedAt).max() ?? .distantPast
         let newTime = reading.limits.values.map(\.observedAt).max() ?? .distantPast
         let selected = oldTime > newTime ? previous : reading.limits

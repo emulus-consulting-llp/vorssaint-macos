@@ -407,7 +407,7 @@ enum AgentLimitSupport {
     /// Expired remote quota needs a new observation, not an assumed full allowance.
     static func displayWindows(_ limits: AgentLimits?, now: Date) -> [AgentLimitWindow] {
         guard let limits else { return [] }
-        if !limits.provider.supportsAnalytics {
+        if limits.source == .account {
             return limits.windows.filter { ($0.resetsAt ?? .distantPast) > now }
         }
         return limits.windows.map { current($0, at: now) }

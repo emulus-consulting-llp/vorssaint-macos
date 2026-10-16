@@ -92,7 +92,7 @@ struct NotchAgentsSettingsControls: View {
             Divider()
             Text(text.liveTitle).font(.subheadline.weight(.medium))
             switchRow("waveform.path.ecg", text.liveActivity, isOn: $liveActivity)
-            if liveActivity && (claude || codex || opencode || copilot) {
+            if liveActivity && (claude || gemini || codex || opencode || copilot) {
                 SettingsMenuRow(symbol: "camera.metering.center.weighted", title: text.readout, selection: $readout) {
                     ForEach(NotchAgentReadout.allCases) { option in
                         Text(text.readout(option)).tag(option.rawValue)
@@ -102,7 +102,7 @@ struct NotchAgentsSettingsControls: View {
                 NotchAgentStripSample(readout: NotchAgentReadout(rawValue: readout) ?? .elapsed,
                                       display: NotchAgentLimitDisplay(rawValue: limitDisplay) ?? .remaining,
                                       focus: NotchAgentLimitFocus(rawValue: limitFocus) ?? .mostUsed,
-                                      provider: claude ? .claude : codex ? .codex : opencode ? .opencode : .copilot)
+                                      provider: claude ? .claude : gemini ? .gemini : codex ? .codex : opencode ? .opencode : .copilot)
                     .padding(.leading, settingsRowTextInset)
             }
 
