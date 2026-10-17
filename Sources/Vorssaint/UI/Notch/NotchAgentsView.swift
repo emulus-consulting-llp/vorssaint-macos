@@ -7,7 +7,9 @@ import SwiftUI
 struct NotchAgentsView: View {
     let size: CGSize
     @ObservedObject private var usage = AgentUsageService.shared
+    @ObservedObject private var accounts = CodexProfileLimitsService.shared
     @ObservedObject private var l10n = L10n.shared
+    @Environment(\.notchSettingsPreview) private var preview
     @AppStorage(DefaultsKey.notchAgentsPeriod) private var period = AgentPeriod.today.rawValue
     @AppStorage(DefaultsKey.notchAgentsLimitDisplay) private var display = NotchAgentLimitDisplay.remaining.rawValue
     @AppStorage(DefaultsKey.notchAgentsCardOrder) private var cardOrder = ""
@@ -22,12 +24,19 @@ struct NotchAgentsView: View {
     private var text: NotchAgentStrings { FeatureStrings.notchAgents(l10n.language) }
     private var chosenPeriod: AgentPeriod { AgentPeriod(rawValue: period) ?? .today }
 
+    /// The Codex homes the person added, each with a card in the Limits
+    /// card's place, so none while that card is hidden.
+    private var codexAccounts: [CodexProfileLimitsState] {
+        _ = (codex, hiddenCards)
+        return NotchAgentSupport.showsCodexAccounts() ? accounts.states : []
+    }
+
     /// Existing agents need local evidence; opted-in quota pools can explain missing readings.
     private var providers: [AgentProvider] {
         NotchAgentSupport.visibleProviders(enabled:
             [claude ? AgentProvider.claude : nil, gemini ? .gemini : nil, agy ? .agy : nil,
              codex ? .codex : nil, opencode ? .opencode : nil, copilot ? .copilot : nil].compactMap { $0 },
-            seen: usage.snapshot.seen)
+            seen: usage.snapshot.seen.union(codexAccounts.isEmpty ? [] : [.codex]))
     }
 
     private var analyticsProviders: [AgentProvider] { providers.filter(\.supportsAnalytics) }
@@ -35,13 +44,14 @@ struct NotchAgentsView: View {
     private var rows: [[NotchAgentTile]] {
         // The strings are read here so a change in Settings redraws the page.
         _ = (cardOrder, hiddenCards)
-        return NotchAgentSupport.rows(NotchAgentSupport.tiles(cards: NotchAgentSupport.cards(), providers: providers),
+        return NotchAgentSupport.rows(NotchAgentSupport.tiles(cards: NotchAgentSupport.cards(), providers: providers,
+                                                              codexAccounts: codexAccounts.map(\.id)),
                                       width: size.width)
     }
 
     var body: some View {
         Group {
-            if !usage.snapshot.loaded {
+            if !usage.snapshot.loaded && codexAccounts.isEmpty {
                 VStack(spacing: 10) {
                     ProgressView().controlSize(.small)
                     Text(text.loading).font(.system(size: 11)).foregroundStyle(.secondary)
@@ -61,11 +71,32 @@ struct NotchAgentsView: View {
                         grid(rows, now: context.date)
                     }
                 }
+                // The period drives several cards, so it sits in the island's
+                // top row, beside the camera, while any of them shows.
+                .notchBand(leading: {
+                    if rows.joined().contains(where: { $0.card.followsPeriod }) { periodMenu }
+                })
             }
         }
         .frame(width: size.width, height: size.height, alignment: .top)
         .environment(\.locale, l10n.language.formattingLocale())
-        .onAppear { usage.pageDidAppear() }
+        .onAppear {
+            usage.pageDidAppear(preview: preview)
+            accounts.pageDidAppear(preview: preview)
+        }
+        .onDisappear {
+            guard !preview else { return }
+            usage.pageDidDisappear()
+            accounts.pageDidDisappear()
+        }
+    }
+
+    private var periodMenu: some View {
+        NotchMenuButton(title: text.period(chosenPeriod), items: AgentPeriod.allCases.map { option in
+            NotchMenuItem(title: text.period(option), checked: option == chosenPeriod) { period = option.rawValue }
+        }, cornerRadius: 9) {
+            NotchBandMenuLabel(title: text.period(chosenPeriod))
+        }
     }
 
     private func grid(_ rows: [[NotchAgentTile]], now: Date) -> some View {
@@ -89,10 +120,12 @@ struct NotchAgentsView: View {
                 NotchAgentLimitsCard(provider: provider, snapshot: snapshot, now: now,
                                      display: NotchAgentLimitDisplay(rawValue: display) ?? .remaining, text: text,
                                      quotaText: NotchAgentQuotaStrings(language: l10n.language),
-                                     quotaState: usage.quotaState)
+                                     quotaState: usage.quotaState, account: account(tile, now: now),
+                                     defaultAccountName: tile.namesDefaultAccount
+                                        ? FeatureStrings.codexAccounts(l10n.language).defaultAccount : nil)
             }
         case .spend:
-            NotchAgentSpendCard(snapshot: snapshot, providers: analyticsProviders, period: $period, text: text)
+            NotchAgentSpendCard(snapshot: snapshot, providers: analyticsProviders, period: shown, text: text)
         case .live:
             NotchAgentLiveCard(snapshot: snapshot, providers: analyticsProviders, text: text)
         case .trend:
@@ -106,8 +139,25 @@ struct NotchAgentsView: View {
         case .activity:
             NotchAgentActivityCard(snapshot: snapshot, text: text)
         case .resets:
-            NotchAgentResetsCard(now: now, text: text)
+            NotchAgentResetsCard(now: now, text: text, showsDefaultAccount: tile.namesDefaultAccount)
         }
+    }
+
+    private func account(_ tile: NotchAgentTile, now: Date) -> NotchAgentAccount? {
+        guard let id = tile.accountID, let state = codexAccounts.first(where: { $0.id == id }) else { return nil }
+        let strings = FeatureStrings.codexAccounts(l10n.language)
+        let failure = state.failure.map { failure -> String in
+            switch failure {
+            case .missingCLI: return text.resetsNeedCodex
+            case .invalidProfile: return strings.folderProblem
+            case .needsSignIn: return strings.signIn
+            case .outdated: return strings.update
+            case .unavailable, .cancelled: return strings.failed
+            }
+        }
+        return NotchAgentAccount(name: state.profile.name, limits: state.currentLimits(at: now), plan: state.plan,
+                                 checking: state.checking, failure: failure, refreshHint: strings.refreshHint,
+                                 checkLabel: strings.check) { accounts.refresh(id: id, force: true) }
     }
 }
 
@@ -128,6 +178,19 @@ private struct NotchAgentChip: View {
 
 // MARK: Limits
 
+/// An added Codex home's card: only its own checks, never the reading the
+/// logs give the provider's other account, even when its check failed.
+private struct NotchAgentAccount {
+    let name: String
+    let limits: AgentLimits?
+    let plan: String?
+    let checking: Bool
+    let failure: String?
+    let refreshHint: String
+    let checkLabel: String
+    let refresh: () -> Void
+}
+
 private struct NotchAgentLimitsCard: View {
     let provider: AgentProvider
     let snapshot: AgentUsageSnapshot
@@ -140,19 +203,27 @@ private struct NotchAgentLimitsCard: View {
 
     private var isQuotaPool: Bool { provider == .gemini || provider == .agy }
 
-    /// A reading the Claude app saved a while ago: still the latest known,
-    /// shown quieter until the app checks again.
+    var account: NotchAgentAccount? = nil
+    var defaultAccountName: String? = nil
+
+    private var limits: AgentLimits? {
+        guard let account else { return snapshot.limits[provider] }
+        return account.limits
+    }
+
+    /// A reading from a while ago: still the latest known, shown quieter
+    /// until it is checked again.
     private var stale: Bool {
-        guard let limits = snapshot.limits[provider] else { return false }
         if isQuotaPool {
+            guard let limits else { return false }
             return quotaState != .live || now.timeIntervalSince(limits.observedAt) >= AgentAntigravityUsage.freshness
         }
-        return limits.source == .claudeApp && now.timeIntervalSince(limits.observedAt) >= AgentClaudeAppUsage.freshness
+        return NotchAgentSupport.limitsAreStale(limits, provider: provider, account: account != nil, now: now)
     }
 
     /// Two rows fit: the session and whichever longer window binds first.
     private var windows: [AgentLimitWindow] {
-        let all = AgentLimitSupport.displayWindows(snapshot.limits[provider], now: now)
+        let all = AgentLimitSupport.displayWindows(limits, now: now)
         let session = all.first { $0.kind == .session }
         let longer = all.filter { $0.kind != .session }.max { $0.usedPercent < $1.usedPercent }
         return [session, longer].compactMap { $0 }
@@ -163,17 +234,47 @@ private struct NotchAgentLimitsCard: View {
         let pending = pending
         NotchAgentCardChrome {
             VStack(alignment: .leading, spacing: 6) {
-                NotchAgentCardHeader(title: provider.displayName, symbol: provider.symbol, tint: provider.tint,
-                                     provider: provider) {
+                NotchAgentCardHeader(title: (account?.name ?? defaultAccountName).map { provider.displayName + " · " + $0 } ?? provider.displayName,
+                                     symbol: provider.symbol, tint: provider.tint, provider: provider) {
                     HStack(spacing: 4) {
-                        if isQuotaPool, stale {
-                            NotchAgentChip(text: quotaText.cached, tint: .secondary)
+                        if isQuotaPool, stale { NotchAgentChip(text: quotaText.cached, tint: .secondary) }
+                        if let account {
+                            if let plan = account.plan { NotchAgentChip(text: plan, tint: provider.tint) }
+                            // A check waiting its turn shows as one under way.
+                            if account.checking {
+                                ProgressView().controlSize(.mini).scaleEffect(0.65).frame(width: 12, height: 12)
+                            } else {
+                                Button(action: account.refresh) {
+                                    Image(systemName: "arrow.clockwise").font(.system(size: 10))
+                                }
+                                .buttonStyle(.plain)
+                                .help(account.checkLabel)
+                                .accessibilityLabel(account.checkLabel)
+                            }
+                        } else {
+                            if let plan = snapshot.plans[provider] { NotchAgentChip(text: plan.name, tint: provider.tint) }
+                            if !snapshot.working(provider).isEmpty { NotchAgentPulse(tint: provider.tint, size: 5) }
                         }
-                        if let plan = snapshot.plans[provider] { NotchAgentChip(text: plan.name, tint: provider.tint) }
-                        if !snapshot.working(provider).isEmpty { NotchAgentPulse(tint: provider.tint, size: 5) }
                     }
                 }
-                if windows.isEmpty && pending.isEmpty {
+                if let account {
+                    let notes = NotchAgentSupport.accountNotes(
+                        hasWindows: !windows.isEmpty, checking: account.checking, failure: account.failure,
+                        hint: account.refreshHint, loading: text.loading,
+                        updated: limits.map { text.updated($0.observedAt.formatted(
+                            .relative(presentation: .named, unitsStyle: .abbreviated).locale(locale))) })
+                    if let placeholder = notes.placeholder {
+                        Text(placeholder).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                    if !windows.isEmpty { meters(windows) }
+                    // What went wrong since the reading shown, or how old it is.
+                    if let note = notes.caption {
+                        Text(note)
+                            .font(.system(size: 8.5))
+                            .foregroundStyle(account.failure == nil && !stale ? Color.secondary : Color.orange)
+                            .lineLimit(1)
+                    }
+                } else if windows.isEmpty && pending.isEmpty {
                     if isQuotaPool {
                         Text(quotaState == .loading ? text.loading :
                             snapshot.limits[provider] == nil ? quotaText.unavailable : quotaText.waiting)
@@ -214,9 +315,16 @@ private struct NotchAgentLimitsCard: View {
         return pool + " · " + text.updated(observed.formatted(date: .abbreviated, time: .shortened))
     }
 
+    private func meters(_ windows: [AgentLimitWindow]) -> some View {
+        VStack(spacing: 5) {
+            ForEach(windows) { row($0) }
+        }
+        .opacity(stale ? 0.6 : 1)
+    }
+
     /// How old a reading is, once it is old enough to have missed use elsewhere.
     @ViewBuilder private var caption: some View {
-        if let observed = snapshot.limits[provider]?.observedAt, now.timeIntervalSince(observed) > 600 {
+        if let observed = limits?.observedAt, now.timeIntervalSince(observed) > 600 {
             Text(text.updated(observed.formatted(.relative(presentation: .named, unitsStyle: .abbreviated)
                 .locale(locale))))
                 .font(.system(size: 9.5))
@@ -331,7 +439,7 @@ private struct NotchAgentLimitsCard: View {
             parts.append(resets.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(locale)))
             if window.estimatedResetsAt != nil { parts.append(text.estimated) }
         }
-        if let observed = snapshot.limits[provider]?.observedAt, now.timeIntervalSince(observed) > 600 {
+        if let observed = limits?.observedAt, now.timeIntervalSince(observed) > 600 {
             parts.append(text.updated(observed.formatted(.relative(presentation: .named).locale(locale))))
         }
         return parts.joined(separator: " · ")
@@ -403,19 +511,21 @@ private struct NotchAgentInlineLabel: LabelStyle {
 
 // MARK: Spending
 
+/// The period it covers is chosen in the island's top row, which the trend,
+/// models and projects follow too; the plan multiples take its place here.
 private struct NotchAgentSpendCard: View {
     let snapshot: AgentUsageSnapshot
     let providers: [AgentProvider]
-    @Binding var period: String
+    let period: AgentPeriod
     let text: NotchAgentStrings
 
-    private var chosen: AgentPeriod { AgentPeriod(rawValue: period) ?? .today }
-
     var body: some View {
-        let usage = snapshot.usage(chosen)
+        let usage = snapshot.usage(period)
         NotchAgentCardChrome {
             VStack(alignment: .leading, spacing: 5) {
-                NotchAgentCardHeader(title: text.spendCard, symbol: NotchAgentCard.spend.symbol) { periodMenu }
+                NotchAgentCardHeader(title: text.spendCard, symbol: NotchAgentCard.spend.symbol) {
+                    if period == .month { multiples(usage) }
+                }
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
                     Text((usage.fullyPriced ? "" : "≥ ") + AgentFormat.cost(usage.total.cost))
                         .font(.system(size: 22, weight: .medium, design: .rounded))
@@ -428,7 +538,6 @@ private struct NotchAgentSpendCard: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                     Spacer(minLength: 0)
-                    if chosen == .month { multiples(usage) }
                 }
                 .help(usage.fullyPriced ? text.valueNote : text.unpriced)
                 split(usage)
@@ -439,18 +548,6 @@ private struct NotchAgentSpendCard: View {
                     .minimumScaleFactor(0.85)
                     .help(text.saved(AgentFormat.cost(usage.total.savings)))
             }
-        }
-    }
-
-    private var periodMenu: some View {
-        NotchMenuButton(title: text.period(chosen), items: AgentPeriod.allCases.map { option in
-            NotchMenuItem(title: text.period(option), checked: option == chosen) { period = option.rawValue }
-        }) {
-            Text("\(text.period(chosen)) \(Image(systemName: "chevron.down"))")
-                .font(.system(size: 9.5, weight: .medium))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 4)
-                .contentShape(Rectangle())
         }
     }
 
@@ -869,6 +966,8 @@ private struct NotchAgentActivityCard: View {
 private struct NotchAgentResetsCard: View {
     let now: Date
     let text: NotchAgentStrings
+    /// Beside added Codex accounts, says which one its resets belong to.
+    var showsDefaultAccount = false
     @ObservedObject private var resets = AgentCodexResetService.shared
     @ObservedObject private var l10n = L10n.shared
     @State private var confirming = false
@@ -891,6 +990,10 @@ private struct NotchAgentResetsCard: View {
                     } else if resets.checking {
                         ProgressView().controlSize(.mini)
                     }
+                }
+                if showsDefaultAccount {
+                    Text("Codex · " + FeatureStrings.codexAccounts(l10n.language).defaultAccount)
+                        .font(.system(size: 8.5)).foregroundStyle(.secondary).lineLimit(1)
                 }
                 content
             }

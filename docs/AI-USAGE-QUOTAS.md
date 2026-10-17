@@ -10,22 +10,24 @@ five-hour and weekly allowances and their reset countdowns when available.
 These cards do not measure a separate Gemini web-app subscription or your Anthropic
 subscription. Existing Claude, Codex, OpenCode and Copilot behavior is preserved.
 Gemini/Antigravity quotas do not create token counts, costs, model breakdowns or
-live activity. With only these providers enabled, the page shows limit cards only.
+live activity. Gemini can separately read supported local Antigravity CLI
+transcripts for activity and usage; Antigravity remains a quota-only pool.
 Warning and reset notifications for these two pools are deferred; existing
 providers retain their notifications.
 
 ## Claude and Codex session bars
 
-**Claude** shows its five-hour session and weekly limit from the newer of two local
-readings: the Claude app's saved plan history, or `~/.aiusage/claude.json`, which
-the personal Claude Code status line hook from the ai-usage-bar prototype writes on
-every render. That file carries exact renewal times. It is as fresh as Claude Code's
-last render; after 30 minutes the bars dim. A window that has since renewed has
-spent an unknown amount, so its percentage is not shown: the card keeps its
-**Session** and **Week** rows with an empty bar and a dash until the next reading,
-and the session counts down to the end of Claude Code's current five-hour block
-when there is one. Without a reading from the last seven days, the card keeps its
-previous estimated-session behavior.
+**Claude** prefers a recent account-wide reading from Claude Code's own CLI.
+Checks run at most once a minute while the AI page is visible and every five
+minutes otherwise, with backoff after failures. No model prompt is sent by this
+check. The Claude app's saved plan history and `~/.aiusage/claude.json` remain
+fallbacks; the latter is written by the personal status line hook and carries
+exact renewal times. The newer usable fallback wins, and empty hook renders do
+not erase a still-usable reading. A direct CLI reading takes priority for 30
+minutes; older readings dim. Account changes and sign-out invalidate retained
+quotas. Expired or absent data keeps the **Session** and **Week** rows with an
+empty bar and a dash, rather than inventing a percentage. A session countdown
+appears when a usable reset time is known.
 
 **Codex** plans that report only a weekly window gain a **Session** bar from a
 personal budget: 10 percentage points of the weekly window per five-hour session. A
@@ -37,6 +39,10 @@ counts what it already shows. A banked reset or an account change starts the cou
 again. The budget is display-only and sends no notifications. Its state is kept in
 `codex-session-budget.json` beside the usage archive, so a relaunch keeps the
 running session.
+
+Adding Codex account homes creates independent quota cards alongside the default
+account's card. The default card keeps this personal session budget; added
+accounts do not share its budget or session-log history.
 
 ## Reading states
 

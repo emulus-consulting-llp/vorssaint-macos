@@ -11,9 +11,10 @@ import Network
 /// incrementally, and nothing is copied or sent: only counters are kept, in
 /// memory and in the app's private folder so the next launch reads only what
 /// the agents wrote meanwhile. OpenCode's stay in memory only, and its
-/// database is read again at each launch. The optional public price-list request
-/// keeps prices up to date. Opt-in Gemini/Antigravity limits use a separate bounded
-/// loopback reader; no tokens, prompts or usage analytics are inferred from quotas.
+/// database is read again at each launch. Claude Code checks account-wide
+/// limits through its own CLI, including use on other machines. The public
+/// price list is fetched only when the person keeps prices up to date.
+/// Opt-in Gemini/Antigravity limits use a separate bounded loopback reader.
 ///
 /// Reading happens on a private queue; the main thread and that queue hand
 /// work to each other asynchronously, except that a stop waits for progress
@@ -24,6 +25,8 @@ final class AgentUsageService: ObservableObject {
     @Published private(set) var snapshot = AgentUsageSnapshot()
     /// When the Claude app last saved the plan's limits; nil when it never has.
     @Published private(set) var claudeAppChecked: Date?
+    @Published private(set) var claudeAccountChecking = false
+    @Published private(set) var claudeAccountFailure: AgentClaudeServer.Failure?
     /// The day of the price list in use.
     @Published private(set) var pricesUpdated: Date?
     let events = PassthroughSubject<AgentUsageEvent, Never>()
@@ -73,6 +76,11 @@ final class AgentUsageService: ObservableObject {
     private var pricesFailed = false
     /// When the list on disk was downloaded; nil until the queue has looked.
     private var pricesSaved: Date?
+    private let claudeAccountQueue = DispatchQueue(label: "com.vorssaint.claude-limits", qos: .utility)
+    private var claudeAccountRequest: AgentClaudeServer.Request?
+    private var claudeAccountAttempted = Date.distantPast
+    /// The AI page is on the island, which asks Claude Code more often.
+    private var pageVisible = false
 
     // Confined to `queue`.
     private var readerSession = -1
@@ -105,6 +113,7 @@ final class AgentUsageService: ObservableObject {
     private var savedCodexBudget: AgentCodexSessionBudget?
     /// Startup spans overlapping logs; replay their quota observations together.
     private var initialCodexReadings: [AgentLimits]?
+    private var claudeAccountLimits: AgentLimits?
     private var shippedPrices: AgentPriceList?
     private var previousLimits: [AgentProvider: AgentLimits] = [:]
     /// Warned windows, each waiting for its renewal.
@@ -120,12 +129,14 @@ final class AgentUsageService: ObservableObject {
     private init() {}
 
     func syncWithPreferences() {
+        CodexProfileLimitsService.shared.synchronize()
         guard NotchAgentSupport.isEnabled() else { stop(); return }
         let wanted = NotchAgentSupport.providers()
         // An agent turned off is no longer read at all, and one turned on is
         // read from its start: both take a fresh reading, which would not
-        // resume progress saved for the old set, so it goes at once.
-        if running, wanted != providers { stop(keepingProgress: false) }
+        // resume progress saved for the old set, so it goes at once. Codex
+        // accounts keep their checks: they read no log.
+        if running, wanted != providers { stop(keepingProgress: false, pausingAccounts: false) }
         if !running {
             running = true
             session += 1
@@ -137,15 +148,18 @@ final class AgentUsageService: ObservableObject {
         }
         syncPrices()
         requestQuota()
+        refreshClaudeLimits()
     }
 
     /// Stops reading while the island is away, as with the display asleep or
     /// the Mac locked, and keeps what was read: reading every log again on the
     /// way back costs far more than the pause saves.
     func pause() {
+        CodexProfileLimitsService.shared.pause()
         guard running, !paused else { return }
         paused = true
         cancelQuota()
+        cancelClaudeLimits()
         timer?.invalidate()
         timer = nil
         queue.async { [self] in
@@ -170,7 +184,8 @@ final class AgentUsageService: ObservableObject {
         }
     }
 
-    func stop(keepingProgress keeps: Bool = true) {
+    func stop(keepingProgress keeps: Bool = true, pausingAccounts: Bool = true) {
+        if pausingAccounts { CodexProfileLimitsService.shared.pause() }
         cancelQuota()
         quotaState = .unavailable
         // A first read still going stops at its next chunk, so the wait
@@ -179,6 +194,9 @@ final class AgentUsageService: ObservableObject {
         settleArchive(keeping: keeps && NotchAgentSupport.isEnabled())
         guard running else { return }
         running = false
+        cancelClaudeLimits()
+        claudeAccountAttempted = .distantPast
+        claudeAccountFailure = nil
         paused = false
         session += 1
         timer?.invalidate()
@@ -216,6 +234,7 @@ final class AgentUsageService: ObservableObject {
             codexBudget = AgentCodexSessionBudget()
             savedCodexBudget = nil
             initialCodexReadings = nil
+            claudeAccountLimits = nil
             savedMark = nil
             lastSave = .distantPast
         }
@@ -234,12 +253,16 @@ final class AgentUsageService: ObservableObject {
         }
     }
 
-    /// Opening the page shows the latest limits the Claude app saved.
-    func pageDidAppear() {
+    /// Reads local fallbacks immediately and asks Claude for fresh account
+    /// limits. A Settings preview reads too, without counting as the page.
+    func pageDidAppear(preview: Bool = false) {
+        if !preview { pageVisible = true }
         guard running else { return }
         requestQuota(force: true)
+        refreshClaudeLimits()
         queue.async { [self] in
             guard readerSession >= 0 else { return }
+            readClaudePlan()
             readClaudeApp(now: Date())
             checkLimits()
             publish()
@@ -289,6 +312,10 @@ final class AgentUsageService: ObservableObject {
                 }
             }
         }
+    }
+
+    func pageDidDisappear() {
+        pageVisible = false
     }
 
     // MARK: Reading
@@ -536,15 +563,7 @@ final class AgentUsageService: ObservableObject {
         let consume: (Data) -> Void = { [self] line in
             // Apply in log order while the chunk is alive instead of retaining
             // every parsed entry until a potentially multi-gigabyte file ends.
-            let entries: [AgentLogEntry]
-            switch provider {
-            case .claude: entries = AgentLogParser.parseClaude(line, state: &cursor.state, now: now)
-            case .gemini: entries = AgentLogParser.parseGemini(line, state: &cursor.state, now: now)
-            case .codex: entries = AgentLogParser.parseCodex(line, state: &cursor.state, now: now)
-            case .opencode: entries = AgentLogParser.parseOpenCode(line, state: &cursor.state, now: now)
-            case .copilot: entries = AgentLogParser.parseCopilot(line, state: &cursor.state, now: now)
-            case .agy: entries = [] // Quota pool has no supported session-log reader.
-            }
+            let entries = provider.reader.parse(line, state: &cursor.state, now: now)
             guard !entries.isEmpty else { return }
             changed = true
             if provider == .codex {
@@ -556,12 +575,13 @@ final class AgentUsageService: ObservableObject {
             let isSubagent = provider == .opencode && !cursor.state.parentSession.isEmpty
             let turnFile = provider == .opencode && !cursor.state.session.isEmpty ? "\(path)#\(cursor.state.session)" : path
             let tracksTurns = isSubagent ? false : cursor.tracksTurns
-            let parent = isSubagent ? "\(path)#\(cursor.state.parentSession)" : cursor.parent
+            let parent = isSubagent ? "\(path)#\(cursor.state.parentSession)"
+                : cursor.parent ?? cursor.codexParent(among: cursors)
             let finished = store.apply(entries, file: turnFile, provider: provider, tracksTurns: tracksTurns,
                                        parent: parent, modified: cursor.modified, now: now)
             finished.forEach(report)
         }
-        if provider == .copilot && cursor.offset == 0 {
+        if provider.reader.readsFullHistoryFirst && cursor.offset == 0 {
             AgentLogReader.readCopilotHistory(cursor, shouldContinue: { !cancellation.isCancelled }, line: consume)
         } else {
             AgentLogReader.readAppended(cursor, since: now.addingTimeInterval(-Self.horizon),
@@ -618,6 +638,7 @@ final class AgentUsageService: ObservableObject {
         guard running else { return }
         syncPrices()
         requestQuota()
+        refreshClaudeLimits()
         queue.async { [self] in
             guard readerSession >= 0 else { return }
             let now = Date()
@@ -639,8 +660,8 @@ final class AgentUsageService: ObservableObject {
                     watch(roots)
                 }
                 lastRootCheck = now
-                readClaudePlan()
             }
+            readClaudePlan()
             readClaudeApp(now: now)
             checkLimits()
             reportRenewals(now: now)
@@ -804,6 +825,7 @@ final class AgentUsageService: ObservableObject {
         guard organization != claudeOrganization || claudeStatusLineNotBefore == nil else { return }
         claudeOrganization = organization
         claudeStatusLineNotBefore = changedAt
+        claudeAccountLimits = nil
         store.clearLimits(.claude)
         previousLimits[.claude] = nil
         warned = warned.filter { $0.value.provider != .claude }
@@ -816,7 +838,8 @@ final class AgentUsageService: ObservableObject {
     /// saves. Runs on `queue`.
     private func readClaudeApp(now: Date) {
         guard enabled.contains(.claude) else {
-            if store.limits[.claude]?.source == .claudeApp { store.clearLimits(.claude) }
+            store.clearLimits(.claude)
+            claudeAccountLimits = nil
             claudeAppModified = nil
             claudeAppSamples = []
             claudeStatusLineModified = nil
@@ -854,11 +877,67 @@ final class AgentUsageService: ObservableObject {
         let newest = AgentClaudeStatusLineUsage.latest(app: app, statusLine: statusLine,
                                                        previous: store.limits[.claude], now: now,
                                                        statusLineNotBefore: claudeStatusLineNotBefore)
-        if let limits = newest {
-            store.setLimits(limits)
-        } else if store.limits[.claude]?.source == .claudeApp {
+        let account = AgentClaudeServer.current(claudeAccountLimits, now: now)
+        // Prefer a recent direct reading to avoid oscillating between exact
+        // CLI resets and the desktop's estimates; retain the personal hook fallback.
+        let recent = account.flatMap { now.timeIntervalSince($0.observedAt) < AgentClaudeAppUsage.freshness ? $0 : nil }
+        if let latest = recent ?? [newest, account].compactMap({ $0 }).max(by: { $0.observedAt < $1.observedAt }) {
+            store.setLimits(latest)
+        } else {
             store.clearLimits(.claude)
         }
+    }
+
+    // Main thread. Never query while the feature is off, asleep or already
+    // checking. Every minute only while the page shows; failures back off,
+    // and looking at the page does not bypass that.
+    func refreshClaudeLimits(now: Date = Date()) {
+        guard running, !paused, providers.contains(.claude), claudeAccountRequest == nil else { return }
+        let interval = AgentClaudeServer.interval(after: claudeAccountFailure, pageVisible: pageVisible)
+        guard now.timeIntervalSince(claudeAccountAttempted) >= interval else { return }
+        claudeAccountAttempted = now
+        claudeAccountChecking = true
+        let request = AgentClaudeServer.Request()
+        claudeAccountRequest = request
+        let session = self.session
+        let home = self.home
+        claudeAccountQueue.async { [weak self] in
+            let result: Result<AgentClaudeServer.Summary, AgentClaudeServer.Failure>
+            if let executable = AgentClaudeServer.executable(home: home, searchPath: ProcessInfo.processInfo.environment["PATH"]) {
+                result = request.run(executable, home: home,
+                    environment: AgentCodexServer.environment(for: executable, searchPath: nil))
+            } else { result = .failure(.missing) }
+            DispatchQueue.main.async {
+                guard let self, self.running, !self.paused, self.session == session,
+                      self.claudeAccountRequest === request else { return }
+                self.claudeAccountRequest = nil
+                self.claudeAccountChecking = false
+                switch result {
+                case .failure(let failure): self.claudeAccountFailure = failure
+                case .success(let summary):
+                    self.claudeAccountFailure = nil
+                    self.queue.async {
+                        guard self.readerSession == session, self.enabled.contains(.claude) else { return }
+                        self.readClaudePlan()
+                        guard self.claudeOrganization == summary.organization else { return }
+                        self.claudeAccountLimits = summary.limits
+                        self.readClaudeApp(now: Date())
+                        self.checkLimits()
+                        self.schedulePublish()
+                    }
+                }
+            }
+        }
+    }
+
+    private func cancelClaudeLimits() {
+        guard let request = claudeAccountRequest else { return }
+        request.cancel()
+        claudeAccountRequest = nil
+        claudeAccountChecking = false
+        // Resume asks again instead of waiting out a cancelled check; with
+        // none in flight, the wait after a failure still holds.
+        claudeAccountAttempted = .distantPast
     }
 
     // MARK: Prices

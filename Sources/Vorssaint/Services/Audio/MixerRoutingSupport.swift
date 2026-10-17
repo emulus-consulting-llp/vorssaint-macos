@@ -172,6 +172,15 @@ enum MixerRoutingSupport {
 
     private static let forbiddenScalars = CharacterSet.controlCharacters.union(.newlines)
 
+    /// The whole percent a slider position is shown as. A device can report a
+    /// level that is not a number, and converting that to an integer traps, so
+    /// it reads as 0% here instead of taking the app down.
+    static func displayPercent(forVolume volume: Double) -> Int {
+        guard volume.isFinite else { return 0 }
+        // Bound the value so an absurdly large finite level cannot overflow Int.
+        return Int((min(max(volume, -1000), 1000) * 100).rounded())
+    }
+
     static func isUnity(_ volume: Double) -> Bool {
         abs(volume - 1) < 0.005
     }
@@ -334,6 +343,17 @@ enum MixerRoutingSupport {
             firstChannel += channels
         }
         return streamChannels.first { $0 > 0 }
+    }
+
+    /// Whether a level asked of the output also throws its mute switch, the
+    /// way the system's own volume keys and the Control Center slider do at
+    /// the bottom of the range, since some outputs still play there. A level
+    /// the percent labels show as 0% counts, the same half percent `isUnity`
+    /// allows at 100%: a key steps from the level the output reports, so a
+    /// coarse step down from a hair above one step lands just above zero.
+    /// The finest key step stays audible.
+    static func mutesOutput(atVolume volume: Double) -> Bool {
+        volume < 0.005
     }
 
     /// Inactive apps with a custom volume or output remain visible so hiding
@@ -652,6 +672,14 @@ enum MixerRoutingSupport {
         return abs(currentVolume - appliedVolume) < 0.005
     }
 
+    /// Level 0 is still faintly audible on some speakers (built-in MacBook Pro
+    /// speakers sit near -63 dB there), so a headphone disconnect lowered to 0
+    /// also mutes the output. An output that is already muted, or has no mute
+    /// switch, is left alone, so only a mute this feature set is undone later.
+    static func shouldMuteOutputLoweredForDisconnect(lowerToPercent: Int, currentlyMuted: Bool?) -> Bool {
+        lowerToPercent <= 0 && currentlyMuted == false
+    }
+
     /// Pro audio hosts (DAWs and live rack hosts) own their output device,
     /// clock and latency chain; the mixer's stereo-mixdown tap mutes their
     /// real output and replays it elsewhere, which silences them outright
@@ -667,6 +695,7 @@ enum MixerRoutingSupport {
         "com.cockos.reaper",
         "com.steinberg.",        // Cubase, Nuendo, Dorico
         "com.presonus.",         // Studio One
+        "com.fender.studioapp",  // Studio Pro
         "com.bitwig.",
         "com.image-line.",       // FL Studio
         "com.motu.",             // Digital Performer

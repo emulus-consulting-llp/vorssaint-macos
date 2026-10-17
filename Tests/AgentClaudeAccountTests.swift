@@ -14,6 +14,7 @@ enum AgentClaudeAccountTests {
         var claudeProfileModified: Date?
         var claudeAppModified: Date?
         var claudeAppSamples: [AgentClaudeAppUsage.Sample] = []
+        var claudeAccountLimits: AgentLimits?
         var claudeStatusLineModified: Date?
         var claudeStatusLineData: Data?
         var claudeStatusLineNotBefore: Date?
