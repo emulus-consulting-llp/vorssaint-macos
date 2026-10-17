@@ -1,7 +1,8 @@
 # Maintaining your personal Vorssaint fork
 
-Your active personal branch is `personal/ai-usage`; `community` tracks the tested
-community baseline. `main` and `ai-usage-tracker` preserve the original history.
+Your active personal branch is `personal/ai-usage`; `community` records a tested
+community baseline and may lag upstream commits already merged into your personal
+branch. `main` and `ai-usage-tracker` preserve the original history.
 The [AI usage customization](AI-USAGE-QUOTAS.md) lives on the aligned personal branch.
 
 | Name | Meaning |
@@ -12,6 +13,10 @@ The [AI usage customization](AI-USAGE-QUOTAS.md) lives on the aligned personal b
 | `ai-usage-tracker` | Preserved work before history alignment |
 | `community` | Clean, tested community baseline |
 | `personal/ai-usage` | Active personal code, plans and documentation |
+
+**For every upstream update, follow the preservation checks below. Personal
+behavior takes priority when upstream and the fork disagree. A conflict-free merge
+does not establish that personal features survived.**
 
 Normal pushes target `origin`. The local `upstream` push URL is deliberately
 unusable; fetching still works. Git remote settings are local to this checkout,
@@ -72,51 +77,172 @@ GitHub's Sync fork button only updates a repository branch. It does not update
 your custom branch or the app installed on your Mac. Likewise, `git pull` on
 `personal/ai-usage` normally reads your fork's matching branch, not `upstream/main`.
 
-Have your coding assistant follow this routine whenever you want an update:
+This is the standard process for an assistant asked to review or merge community
+updates. Follow the active agent-guard rules and the user's current authorization.
+In DEV mode, work in place, commit completed work, and do not create/switch branches
+or push unless requested. Updating source does not authorize installing the app,
+changing hooks, resetting preferences, or moving other branches.
 
-1. Save and push current personal work. Start with a clean working tree and fetch
-   both remotes. Check whether `origin/personal/ai-usage` contains newer work from
-   another machine and reconcile it before starting. Note the community commit
-   being tested; preferably choose an upstream stable release's commit.
-2. Confirm `community` remains an ancestor of the selected upstream commit. If
-   history has been rewritten again, review a new alignment instead of forcing a
-   merge. Create a new integration branch **from `personal/ai-usage`**, then merge the
-   selected upstream commit. For the latest development code, use `upstream/main`.
-3. Resolve overlapping changes while preserving the desired personal behavior.
-   If abandoning an in-progress merge, use `git merge --abort`. Leave the personal
-   branch untouched until validation passes.
-4. Run the appropriate tests, build the Developer app, run its selftest, and
-   inspect the changed UI. Follow [CONTRIBUTING.md](../CONTRIBUTING.md) for checks.
-   For AI usage changes, the starting commands are:
+### 1. Establish fresh, recoverable inputs
 
-   ```sh
-   ./build.sh --test-suite=agents
-   ./build.sh --dev
-   ./build/VorssaintDeveloper --selftest
-   ```
+- Confirm the current branch is `personal/ai-usage`, the working tree is clean,
+  and no merge/rebase is in progress. Leave someone else's uncommitted work alone;
+  do not auto-stash, discard it, or include it in a checkpoint commit.
+- Fetch `origin` and `upstream` without tags, with network approval when required.
+  **If either fetch fails, stop the new-upstream merge.** Cached refs can be
+  reviewed, but must not be described as the latest remote code. A successful
+  user-run fetch is also acceptable.
+- Compare `HEAD` with the freshly fetched `origin/personal/ai-usage`. Reconcile
+  incoming personal work before upstream integration; do not reset to either ref.
+- Record full commit IDs for the personal starting point (**P**), selected
+  upstream target (**U**), and their merge base (**B**) in a dated update report.
+  Commands below use `P`, `U`, and `B` as placeholders for those literal IDs.
+  Use `upstream/main` for a request for current development code, or the requested
+  release commit. Merge the recorded ID so a later fetch cannot change the target.
+- Check `community` and the previously integrated upstream target are ancestors
+  of U. Derive the latter from prior merge parents/reports, not just the possibly
+  older `community` pointer. If upstream rewrote history or the merge base is
+  unexpected/non-unique, stop integration and explain the mismatch.
+- If U is already an ancestor of P, there is nothing new to merge. Record a no-op;
+  do not manufacture a merge commit. P remains the recovery point for any trial.
 
-   Broader community changes require their relevant tests and, as appropriate,
-   `./build.sh --test`. Passing a source merge alone is not a successful update.
-5. After validation, fast-forward `personal/ai-usage` to the tested integration
-   branch and push it to `origin`. If personal work advanced during testing,
-   integrate that work and validate again before promotion. Never force-push to
-   make an update fit.
-6. Advance `community` only by fast-forward to the selected community commit and push
-   it to `origin/community`. Never merge your personal branch into `community`. If the
-   fast-forward is refused, investigate the branch history instead of resetting it.
-7. Rebuild and install the tested personal app when you are ready to use it.
-
-For example, step 2 for the latest development code is:
+Useful read-only commands, run separately from this repository:
 
 ```sh
-git switch personal/ai-usage
-git switch -c integrate/community-YYYYMMDD
-git merge upstream/main
+git status --short --branch
+git rev-parse HEAD upstream/main origin/personal/ai-usage community
+git rev-list --left-right --count HEAD...origin/personal/ai-usage
+git merge-base --all P U
+git log --oneline P..U
+git diff --name-status --find-renames B P
+git diff --name-status --find-renames B U
 ```
 
-Use a new branch name each time. The example assumes history alignment, fetching, and the clean-tree
-checks above are already complete. Community changes may require manual conflict
-resolution, especially when they modify the same AI usage code.
+### 2. Review upstream and inventory personal changes before merging
+
+Read the actual patches in `B..U`, group meaningful fixes/features, and flag
+changes to settings, storage, providers, UI, build scripts and dependencies. Check
+callers and integration points; commit titles alone are not a code review.
+
+Inventory **every** personal change in `B..P`, including tests, build integration,
+docs, ignore rules, resources and deletions. Read the personal commit history as
+well. The feature table below is a starting point, not an exhaustive allowlist:
+extend it for any additional customization found in the diff.
+
+Intersect both changed-path lists, following renames, and review every overlapping
+file even when Git reports no conflict. Also review upstream changes in callers
+of personal code. Record how each overlap will retain personal behavior and which
+test or manual check exercises it. Run the relevant existing tests on P first so
+later failures can be compared against a real baseline.
+
+### 3. Trial the merge without committing it
+
+In the current DEV workflow, with all preconditions satisfied:
+
+```sh
+git merge --no-commit --no-ff U
+```
+
+Resolve each conflict by combining the intended upstream improvement with the
+personal behavior. Do not use blanket `ours`/`theirs`, `-s ours`, `-X ours`,
+`-X theirs`, or replace an entire customized file with upstream's version. Preserve
+local tests; do not delete/weaken them just to accept an upstream implementation.
+If upstream independently implements a personal feature, remove duplicate code
+only after showing behavior equivalence in the report and checks.
+
+If upstream's design cannot coexist with a personal requirement, keep the personal
+behavior and document the adaptation. Ask the user only if the choice would change
+their intended behavior or cannot be resolved from existing requirements. Never
+silently drop a customization. For an abandoned trial, `git merge --abort` is
+appropriate only for the merge started by this workflow, before a merge commit,
+and after checking no unrelated work appeared. Do not use a hard reset.
+
+An isolated integration branch is an option only when the user authorizes branch
+creation/switching. Start it at P, apply the same checks, and promote only if the
+personal branch has not advanced; otherwise integrate and validate the new work.
+
+### 4. Audit preservation and validate the combined result
+
+Before committing, review both directions:
+
+```sh
+git diff --cached --stat P
+git diff --cached P
+git diff --cached U
+git diff --check
+git diff --cached --check
+git ls-files -u
+git diff
+```
+
+The P comparison shows exactly what the update changes in the personal app. The U
+comparison shows which customizations remain in the merged result. Compare that
+residual diff with the original `B..P` inventory. Account for **every** personal
+change as retained, adapted with equivalent behavior, or explicitly approved for
+removal. Flag personal files unexpectedly equal to upstream, disappeared files,
+lost test registration, and changed settings defaults. File counts alone do not
+prove preservation. Stage intended conflict resolutions explicitly; require no
+unmerged paths and no unintended unstaged changes.
+
+Run at least these checks for application updates, plus suites affected by the
+upstream patch (use the full suite for broad changes):
+
+```sh
+./build.sh --test-suite=agents --test-suite=usage-timeline
+python3 Tests/CodexInputHookTests.py
+./build.sh --dev
+./build/VorssaintDeveloper --selftest
+```
+
+See [CONTRIBUTING.md](../CONTRIBUTING.md). The tests compile a subset of the app;
+they do not replace the Developer build. Run checks on the merged source, not an
+old executable. Inspect affected UI when feasible. Record commands, counts,
+failures and unverified interaction separately. A previous session's failure is
+not proof that today's failure is pre-existing: compare it with P under the same
+conditions. Do not label a merge validated if a required check is blocked. If a
+block cannot be resolved, preserve the review record and abort the owned trial;
+report what remains rather than leaving an unexplained half-merge.
+
+### 5. Commit and record the outcome
+
+After validation, commit the merge on `personal/ai-usage` with a clear message and
+a dated report recording P/U/B, accepted upstream changes, overlap decisions,
+the personal preservation inventory, and checks/limitations. Confirm the merge
+contains both P and U in its ancestry and the working tree is clean. A no-op or
+blocked fetch needs only a documentation commit, not a source merge.
+
+Push only if the user requested it, using the explicit personal branch on
+`origin`; never force-push or push to `upstream`. Advance `community` only when
+requested, only by fast-forward to U, and only after validating U separately:
+testing the customized merged tree does not prove the clean upstream tree works.
+Never merge the personal branch into `community`.
+
+Install/relaunch the Developer app only when requested. State separately whether
+source was merged, checks passed, changes were committed/pushed, and the installed
+app was updated. An older running app does not establish the merged UI's behavior.
+
+## Personal behavior that upstream updates must preserve
+
+Update this inventory whenever a personal feature changes. Test filenames below
+are under `Tests/`; their registration and generated production-source inclusion
+in `MetricsTests.swift`, `generate_sources.py`, and `build.sh` must also survive.
+
+| Area | Required behavior | Evidence to check |
+| --- | --- | --- |
+| Claude quotas | Keep Session and Week rows even with absent/expired data; show unknown values, not invented quota percentages or cost/elapsed substitutes. Retain usable readings across empty hook renders; invalidate them on account change/sign-out. | `AgentClaudeStatusLineUsage.swift`, `NotchAgentsView.swift`; `AgentPersonalLimitsTests.swift`, `AgentClaudeAccountTests.swift`, `NotchAgentTests.swift`; inspect missing-data UI. |
+| Codex personal session | For week-only plans, keep the 10-point/five-hour personal budget, including its idle Session row and persistence. Preserve real provider sessions, chronological startup readings and account/reset handling. | `AgentCodexSessionBudget.swift`, `AgentUsageService.swift`, `AgentUsageSummary.swift`; `AgentPersonalLimitsTests.swift`, `AgentUsageReadTests.swift`. |
+| Gemini / Antigravity | Preserve opt-in quota cards and bounded local discovery/cache behavior. Preserve Gemini transcript activity, token/pricing support, question decoding and session attribution separately from quota-only observations. | `AgentAntigravityReader.swift`, `AgentLogParser.swift`, `AgentPricing.swift`; `AgentAntigravityTests.swift`, `AgentUsageReadTests.swift`, `AgentProviderInputLogTests.swift`. |
+| Input state and notices | Keep full question text in memory, correct pending-call matching and resume/answer cleanup; unrelated activity must not clear pending questions. Persistent closed-island notices return after temporary feedback and clear when resolved. | `AgentInputStateTests.swift`, `AgentPersistentInputTests.swift`, `AgentProviderInputLogTests.swift`, `AgentCodexInputLogTests.swift`, `NotchHoverTests.swift`; [input-notice scope](AI-INPUT-NOTICES.md). |
+| Codex approval hook | Keep the optional metadata-only bridge, request/result correlation, expiry and existing-hook preservation. It must not grant approval. Fixture success does not prove live PermissionRequest delivery. | `AgentCodexInputHookTests.swift`, `CodexInputHookTests.py`, `Tools/codex-input-hook.py`; explicit live verification if available. |
+| Provider display | Keep stable per-provider timers/readouts, provider colors, orange Input badges, and sufficient strip/capsule width. The Now logo row remains idle-only. | `NotchAgentSupport.swift`, `NotchAgentStrip.swift`, `NotchCapsuleViews.swift`, `NotchAgentsView.swift`; `NotchAgentTests.swift` and multi-provider UI inspection. |
+| Usage Timeline | Preserve opt-in collection, native window/island views, app/document attribution, exclusions, pause/history deletion, local private storage, settings integration, and elapsed time through sleep. | `Services/UsageTimeline/`, `UI/UsageTimeline/`, `NotchUsageTimelineView.swift`; `UsageTimelineTests.swift`, affected feature/settings tests; [timeline behavior](USAGE-TIMELINE.md). |
+| Privacy and build | Do not persist question text or hook command/patch contents; retain metadata-only archive lifecycle. Keep Developer identity/update isolation, writable module caches, CPU-count fallback and icon regeneration. | `AgentUsageArchiveTests.swift`, `CodexInputHookTests.py`, `build.sh`, [privacy contract](PRIVACY.md); Developer build/selftest and affected install-isolation tests. |
+
+Known limits are part of this contract: generic Claude/Gemini approval dialogs
+are not established by question-tool tests, and Codex file-edit approval delivery
+depends on the runtime actually emitting the optional hook event. Do not claim
+these work solely because fixtures pass. Older feature-plan prose is historical;
+the current source, tests and explicit user decisions govern preservation.
 
 ## Running your version
 

@@ -60,6 +60,8 @@ Per app volume, a real system monitor, a better app switcher, window snapping, D
 
 This personal fork adds opt-in [Gemini and Antigravity usage-limit cards](docs/AI-USAGE-QUOTAS.md).
 Use the Developer build for custom changes; see [fork maintenance](docs/FORK-MAINTENANCE.md).
+Agents updating this fork must follow that guide's upstream review and personal-feature
+preservation checks before committing a community merge.
 
 Choose individual features or start with a preset. Uninstalled features stop loading and disappear from the interface; reinstalling restores their settings. Setup asks only for the permissions your choices need.
 

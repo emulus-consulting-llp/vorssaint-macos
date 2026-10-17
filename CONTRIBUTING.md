@@ -3,6 +3,11 @@
 Vorssaint aims to stay small, native and readable. Contributions are accepted
 under GPL-3.0-or-later unless stated otherwise.
 
+For community updates to this personal fork, follow the
+[fork maintenance process](docs/FORK-MAINTENANCE.md#bringing-in-community-updates-after-alignment).
+Inventory personal changes, review overlapping upstream edits, and validate that
+the combined app preserves those behaviors before committing the merge.
+
 ## Getting started
 
 You need macOS 14 or newer, Apple Silicon and the Xcode Command Line Tools.
