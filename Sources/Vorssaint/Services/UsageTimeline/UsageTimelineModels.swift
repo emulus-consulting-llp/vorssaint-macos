@@ -16,7 +16,14 @@ final class UsageObservationGate {
 struct UsageMoment {
     var date: Date
     var uptime: TimeInterval
-    static var now: UsageMoment { UsageMoment(date: Date(), uptime: ProcessInfo.processInfo.systemUptime) }
+    /// ContinuousClock includes system sleep, unlike process systemUptime.
+    /// Durations remain monotonic across sleep and wall-clock adjustments.
+    private static let clock = ContinuousClock()
+    private static let origin = clock.now
+    static var now: UsageMoment {
+        let elapsed = origin.duration(to: clock.now).components
+        return UsageMoment(date: Date(), uptime: Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18)
+    }
 }
 
 enum UsagePresence: String, Codable, CaseIterable {

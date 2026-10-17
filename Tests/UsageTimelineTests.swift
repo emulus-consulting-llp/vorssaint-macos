@@ -100,6 +100,24 @@ enum UsageTimelineTests {
         let clockSpans = titleReducer.checkpoint(at: jump)
         suite.expect(clockSpans.allSatisfy { $0.duration >= 0 && $0.end >= $0.start } && titleReducer.foreground?.start == jump.date, "clock discontinuities split streams without negative durations")
 
+        var sleeping = UsageReducer(at: moment(0))
+        sleeping.observe(first, at: moment(0))
+        sleeping.setConditions(UsageConditions(sleeping: true), at: moment(30))
+        // The production continuous clock advances through the one-hour sleep.
+        let woke = moment(3630)
+        sleeping.setConditions(UsageConditions(), at: woke)
+        sleeping.observe(first, at: woke)
+        let sleepSpans = sleeping.checkpoint(at: moment(3660))
+        let sleepDay = UsageDay.build(intervals: sleepSpans,
+                                     range: DateInterval(start: moment(0).date, end: moment(3660).date), until: moment(3660).date)
+        suite.expect(sleepDay.away == 3600 && sleepDay.active == 60
+                        && sleepDay.entries.filter { $0.state == .sleeping }.count == 1,
+                     "a one-hour sleep is recorded as away time without stretching foreground visits across it")
+        let sleepClockJump = UsageMoment(date: moment(7200).date, uptime: 3661)
+        let adjusted = sleeping.checkpoint(at: sleepClockJump)
+        suite.expect(adjusted.filter { $0.stream == .foreground }.map(\.duration).reduce(0, +) == 30,
+                     "continuous time still excludes a wall-clock correction after wake")
+
         suite.expect(UsageForeground.documentPath(from: "file:///tmp/Project%20budget.xlsx") == "/tmp/Project budget.xlsx", "document URLs preserve decoded local paths")
         suite.expect(UsageForeground.documentPath(from: "https://example.com/file") == nil && UsageForeground.documentPath(from: "budget.xlsx") == nil, "browser URLs and guessed paths are not stored")
         suite.expect(UsageForeground.documentPath(from: "file://remote-server/doc.xlsx") == nil, "remote document URLs are not misrepresented as local paths")
