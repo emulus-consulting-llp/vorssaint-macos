@@ -211,6 +211,11 @@ if [[ "$SDK" == "$PINNED_SDK" ]]; then
     # Swift 6.4 can read the SDK 26 interfaces when given their compiler version.
     SDK_COMPAT_FLAGS=(-Xfrontend -interface-compiler-version -Xfrontend 6.3.2)
 fi
+MODULE_CACHE_DIR="${TMPDIR:-/tmp}/vorssaint-module-cache"
+mkdir -p "$MODULE_CACHE_DIR"
+SDK_COMPAT_FLAGS+=(-module-cache-path "$MODULE_CACHE_DIR" -Xcc -fmodules-cache-path="$MODULE_CACHE_DIR")
+# Sandboxed builds can compile even when sysctl cannot read the CPU count.
+BUILD_JOBS="$(sysctl -n hw.logicalcpu 2>/dev/null || echo 2)"
 
 # The defaults migrations under test need a real UserDefaults suite, and every
 # suite leaves an empty plist in ~/Library/Preferences. The tests already clear
@@ -302,6 +307,7 @@ if (( TEST )); then
         Sources/Vorssaint/Services/AgentUsage/AgentClaudeStatusLineUsage.swift
         Sources/Vorssaint/Services/AgentUsage/AgentCodexSessionBudget.swift
         Sources/Vorssaint/Services/AgentUsage/AgentCodexServer.swift
+        Sources/Vorssaint/Services/AgentUsage/AgentCodexInputHook.swift
         Sources/Vorssaint/Services/AgentUsage/AgentOpenCodeReader.swift
         Sources/Vorssaint/Services/Notch/NotchGestureSupport.swift
         Sources/Vorssaint/Services/Notch/NotchSectionPaging.swift
@@ -564,7 +570,7 @@ if (( TEST )); then
     TEST_OUTPUT_FILE_MAP="$TEST_OBJECT_DIR/output-file-map.json"
     write_swift_output_file_map "$TEST_OUTPUT_FILE_MAP" "$TEST_OBJECT_DIR" "${TEST_SOURCES[@]}"
     echo "▸ Building & running tests against $(basename "$SDK")…"
-    swiftc -Onone -incremental -enable-batch-mode -j "$(sysctl -n hw.logicalcpu)" \
+    swiftc -Onone -incremental -enable-batch-mode -j "$BUILD_JOBS" \
         -module-name VorssaintTests -output-file-map "$TEST_OUTPUT_FILE_MAP" \
         -target "$TARGET" -sdk "$SDK" "${SDK_COMPAT_FLAGS[@]}" \
         "${VM_STATISTICS_COMPAT_FLAGS[@]}" "${TEST_SOURCES[@]}" -o build/metrics-tests
@@ -596,7 +602,7 @@ write_swift_output_file_map "$APP_OUTPUT_FILE_MAP" "$APP_OBJECT_DIR" "${APP_SOUR
 # each file's compiler parses the whole module again: a clean release took a
 # quarter of an hour. Batches share that work and run on every core, and the
 # optimization stays per file, as before.
-swiftc "${APP_OPTIMIZATION_FLAGS[@]}" -incremental -enable-batch-mode -j "$(sysctl -n hw.logicalcpu)" \
+swiftc "${APP_OPTIMIZATION_FLAGS[@]}" -incremental -enable-batch-mode -j "$BUILD_JOBS" \
     -output-file-map "$APP_OUTPUT_FILE_MAP" \
     -target "$TARGET" -sdk "$SDK" "${SDK_COMPAT_FLAGS[@]}" "${VM_STATISTICS_COMPAT_FLAGS[@]}" "${HID_EVENT_SYSTEM_FLAGS[@]}" \
     "${BUILD_VARIANT_FLAGS[@]}" \
@@ -624,7 +630,9 @@ swiftc -O -target "$TARGET" -sdk "$SDK" "${SDK_COMPAT_FLAGS[@]}" -emit-library \
     -o "build/$NOW_PLAYING_ADAPTER"
 
 echo "▸ Generating app icon…"
-swift Tools/MakeIcon.swift build/AppIcon.iconset
+# Keep icons in sync with their sources; the interpreter needs the same
+# writable module cache and SDK compatibility flags as the compiled targets.
+swift -sdk "$SDK" "${SDK_COMPAT_FLAGS[@]}" Tools/MakeIcon.swift build/AppIcon.iconset
 xattr -c -r build/AppIcon.iconset build/AppIcon.icns build/MenuBarIcon.png build/MenuBarIcon@2x.png build/BrandMark.png 2>/dev/null || true
 ACTOOL_BIN="$(xcrun --find actool 2>/dev/null || true)"
 ICON_TMP="$(mktemp -d)"

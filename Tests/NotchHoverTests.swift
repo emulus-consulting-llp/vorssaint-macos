@@ -94,6 +94,12 @@ enum NotchHoverTests {
         var captureControls: Bool?, notice: NotchNotice?
         var noticeExpanded = false
         var noticeWork: DispatchWorkItem?
+        var inputNoticeRestorations = 0
+        var pendingInputNotice: NotchNotice?
+        func restoreAgentInputNotice() {
+            inputNoticeRestorations += 1
+            if let pendingInputNotice { notice = pendingInputNotice }
+        }
         var departingNotice: NotchNotice?
         var departureWork: DispatchWorkItem?
         var trackWork: DispatchWorkItem?

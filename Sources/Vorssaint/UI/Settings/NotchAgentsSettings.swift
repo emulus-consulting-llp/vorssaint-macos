@@ -22,6 +22,7 @@ struct NotchAgentsSettingsControls: View {
     @AppStorage(DefaultsKey.notchAgentsReadout) private var readout = NotchAgentReadout.elapsed.rawValue
     @AppStorage(DefaultsKey.notchAgentsFinishAlert) private var finishAlert = true
     @AppStorage(DefaultsKey.notchAgentsFinishMinimum) private var finishMinimum = NotchAgentSupport.defaultFinishMinimum
+    @AppStorage(DefaultsKey.notchAgentsInputAlert) private var inputAlert = true
     @AppStorage(DefaultsKey.notchAgentsLimitAlert) private var limitAlert = true
     @AppStorage(DefaultsKey.notchAgentsLimitThreshold) private var limitThreshold = NotchAgentSupport.defaultLimitThreshold
     @AppStorage(DefaultsKey.notchAgentsDailyBudget) private var dailyBudget = 0.0
@@ -118,6 +119,7 @@ struct NotchAgentsSettingsControls: View {
                 }
                 .padding(.leading, settingsRowTextInset)
             }
+            switchRow("questionmark.circle", text.inputAlert, isOn: $inputAlert)
             switchRow("exclamationmark.triangle", text.limitAlert, isOn: $limitAlert)
             if limitAlert {
                 SettingsMenuRow(symbol: "gauge.with.dots.needle.67percent", title: text.limitAt, selection: $limitThreshold) {

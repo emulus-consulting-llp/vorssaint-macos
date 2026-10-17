@@ -1841,6 +1841,13 @@ def main():
           + declaration(dock, "    func endWindowDrag(")
           + "}\n")
 
+    write("AgentCodexInputNotice.swift", "import Foundation\n"
+          + "extension AgentCodexInputLogTests {\nfinal class NoticeHost: NoticeFixture {\n"
+          + "".join(declaration(notch, prefix).replace("private func", "func", 1) for prefix in [
+              "    private func showAgentEvent(", "    private func syncAgentInputNotice(",
+              "    private func restoreAgentInputNotice()"])
+          + "}\n}\n")
+
     write("AgentUsageEventDelivery.swift", "import Foundation\n"
           + "extension AgentUsageEventDeliveryTests {\nfinal class Host: Fixture {\n"
           + declaration("Sources/Vorssaint/Services/AgentUsage/AgentUsageService.swift",
@@ -1870,7 +1877,8 @@ def main():
           + "".join(declaration("Sources/Vorssaint/Services/AgentUsage/AgentUsageService.swift", prefix)
                     .replace("private func", "func", 1)
                     .replace("func read(", "@discardableResult func read(", 1)
-                    for prefix in ["    private func start(", "    private func read(", "    private func filesChanged("])
+                    for prefix in ["    private func start(", "    private func read(", "    private func filesChanged(",
+                                   "    private func readCodexInput("])
           + "}\n}\n")
 
     write("AgentUsagePolling.swift", "import Foundation\n"

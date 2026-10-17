@@ -24,7 +24,7 @@ enum AgentUsageArchive {
 
     private static let fileName = "agent-usage.bin"
     private static let magic: [UInt8] = Array("VAUA".utf8)
-    private static let format = 3
+    private static let format = 5
 
     /// The parser and the store change between versions; what one build
     /// read is not taken for what another would have.
@@ -313,6 +313,7 @@ enum AgentUsageArchive {
             string(value.project)
             tokens(value.tokens)
             double(value.cost)
+            bool(value.isWaitingForInput)
         }
 
         mutating func state(_ value: AgentLogState) {
@@ -329,6 +330,9 @@ enum AgentUsageArchive {
             dictionary(value.copilotReportedRequests) { $0.int($1) }
             optional(value.copilotTurnID) { $0.string($1) }
             bool(value.copilotFinalResponse)
+            optional(value.inputRequestedAt) { $0.date($1) }
+            count(value.pendingQuestionIDs.count)
+            for id in value.pendingQuestionIDs.sorted() { string(id) }
         }
     }
 
@@ -470,7 +474,8 @@ enum AgentUsageArchive {
         mutating func session() throws -> AgentLiveSession {
             AgentLiveSession(id: try string(), provider: try provider(), started: try date(),
                              lastActivity: try date(), model: try string(), project: try string(),
-                             tokens: try tokens(), cost: try double())
+                             tokens: try tokens(), cost: try double(),
+                             isWaitingForInput: try bool())
         }
 
         mutating func state() throws -> AgentLogState {
@@ -482,6 +487,8 @@ enum AgentUsageArchive {
             value.copilotReportedRequests = try dictionary { try $0.amount() }
             value.copilotTurnID = try optional { try $0.string() }
             value.copilotFinalResponse = try bool()
+            value.inputRequestedAt = try optional { try $0.date() }
+            for _ in 0..<(try count()) { value.pendingQuestionIDs.insert(try string()) }
             return value
         }
     }

@@ -564,11 +564,25 @@ private struct NotchAgentLiveCard: View {
     let providers: [AgentProvider]
     let text: NotchAgentStrings
     @Environment(\.locale) private var locale
+    @State private var hoveredProvider: AgentProvider?
+    @State private var selectedProvider: AgentProvider?
+
+    private var activeIdleProvider: AgentProvider? {
+        if let hovered = hoveredProvider, providers.contains(hovered) { return hovered }
+        if let selected = selectedProvider, providers.contains(selected) { return selected }
+        return providers.max {
+            (snapshot.lastActivity[$0] ?? .distantPast) < (snapshot.lastActivity[$1] ?? .distantPast)
+        } ?? providers.first
+    }
+
+    private var logoBadgeWidth: CGFloat { providers.count > 5 ? 25 : 28 }
+    private var logoBadgeHeight: CGFloat { 26 }
+    private var logoSpacing: CGFloat { providers.count > 5 ? 4 : 6 }
 
     var body: some View {
         let live = snapshot.live.filter { providers.contains($0.provider) }
         NotchAgentCardChrome {
-            VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: 6) {
                 NotchAgentCardHeader(title: text.liveCard, symbol: NotchAgentCard.live.symbol,
                                      tint: live.first?.provider.tint ?? .secondary) {
                     HStack(spacing: 4) {
@@ -577,9 +591,7 @@ private struct NotchAgentLiveCard: View {
                     }
                 }
                 if live.isEmpty {
-                    VStack(alignment: .leading, spacing: 5) {
-                        ForEach(providers) { idleRow($0) }
-                    }
+                    idleView
                 } else {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
                         VStack(alignment: .leading, spacing: 5) {
@@ -591,47 +603,109 @@ private struct NotchAgentLiveCard: View {
         }
     }
 
+    private var idleView: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: logoSpacing) {
+                ForEach(providers) { provider in
+                    logoButton(provider, isSelected: provider == activeIdleProvider)
+                }
+            }
+            HStack(spacing: 4) {
+                if let active = activeIdleProvider {
+                    Text(active.displayName)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.92))
+                        .lineLimit(1)
+                    Text("·")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                    Text(relativeActivity(for: active))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                } else {
+                    Text(text.idle)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func logoButton(_ provider: AgentProvider, isSelected: Bool) -> some View {
+        Button {
+            if selectedProvider == provider {
+                selectedProvider = nil
+            } else {
+                selectedProvider = provider
+            }
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(isSelected ? provider.tint.opacity(0.18) : Color.white.opacity(0.06))
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(provider.tint.opacity(0.4), lineWidth: 1)
+                }
+                NotchAgentMark(provider: provider, size: 13, tint: provider.tint)
+                    .opacity(isSelected ? 1.0 : 0.65)
+            }
+            .frame(width: logoBadgeWidth, height: logoBadgeHeight)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered in
+            if isHovered {
+                hoveredProvider = provider
+            } else if hoveredProvider == provider {
+                hoveredProvider = nil
+            }
+        }
+        .help("\(provider.displayName) · " + relativeActivity(for: provider))
+    }
+
+    private func relativeActivity(for provider: AgentProvider) -> String {
+        snapshot.lastActivity[provider].map {
+            $0.formatted(.relative(presentation: .named, unitsStyle: .abbreviated).locale(locale))
+        } ?? text.idle
+    }
+
     private func row(_ session: AgentLiveSession, now: Date) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 4) {
-                NotchAgentGlyph(provider: session.provider, size: 9)
+                NotchAgentGlyph(provider: session.provider, size: 9, needsInput: session.isWaitingForInput)
                 Text(session.project.isEmpty ? session.provider.displayName : session.project)
                     .font(.system(size: 11, weight: .semibold))
                     .lineLimit(1)
                     .truncationMode(.middle)
+                if session.isWaitingForInput {
+                    NotchAgentChip(text: text.needsInput, tint: .orange)
+                }
                 Spacer(minLength: 4)
                 Text(AgentFormat.clock(now.timeIntervalSince(session.started)))
                     .font(.system(size: 11, weight: .medium))
                     .monospacedDigit()
-                    .foregroundStyle(session.provider.tint)
+                    .foregroundStyle(session.isWaitingForInput ? Color.orange : session.provider.tint)
             }
-            // Tokens the agent wrote, as its own window counts them; every
-            // call also reads the whole context again, which the tooltip and
-            // the cost include.
-            Text([AgentPricing.displayName(session.model),
-                  session.tokens.output > 0 ? text.written(AgentFormat.tokens(session.tokens.output)) : "",
-                  session.cost > 0 ? AgentFormat.cost(session.cost) : ""]
-                    .filter { !$0.isEmpty }.joined(separator: " · "))
-                .font(.system(size: 9.5))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            if session.isWaitingForInput, let prompt = session.inputPrompt, !prompt.isEmpty {
+                Text(prompt)
+                    .font(.system(size: 9.5, weight: .medium))
+                    .foregroundStyle(.orange.opacity(0.9))
+                    .lineLimit(1)
+            } else {
+                Text([AgentPricing.displayName(session.model),
+                      session.tokens.output > 0 ? text.written(AgentFormat.tokens(session.tokens.output)) : "",
+                      session.cost > 0 ? AgentFormat.cost(session.cost) : ""]
+                        .filter { !$0.isEmpty }.joined(separator: " · "))
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         }
-        .help(text.tokens(AgentFormat.tokens(session.tokens.total)) + " · "
-              + text.cached(AgentFormat.percent(session.tokens.cacheHitRate ?? 0)))
-    }
-
-    private func idleRow(_ provider: AgentProvider) -> some View {
-        HStack(spacing: 5) {
-            NotchAgentGlyph(provider: provider, size: 9, working: false)
-            Text(provider.displayName).font(.system(size: 10.5, weight: .medium))
-            Spacer(minLength: 4)
-            Text(snapshot.lastActivity[provider].map {
-                $0.formatted(.relative(presentation: .named, unitsStyle: .abbreviated).locale(locale))
-            } ?? text.idle)
-                .font(.system(size: 9.5))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-        }
+        .help(session.isWaitingForInput && session.inputPrompt != nil
+              ? (session.inputPrompt ?? "")
+              : (text.tokens(AgentFormat.tokens(session.tokens.total)) + " · "
+                 + text.cached(AgentFormat.percent(session.tokens.cacheHitRate ?? 0))))
     }
 }
 

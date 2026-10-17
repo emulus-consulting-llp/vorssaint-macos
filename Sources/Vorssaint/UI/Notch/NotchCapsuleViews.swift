@@ -384,10 +384,14 @@ struct NotchCapsuleTimerStrip: View {
 /// The working agents' marks, side by side, each in a frame wider than it.
 private struct NotchCapsuleAgentMarks: View {
     let providers: [AgentProvider]
+    var waitingProviders: Set<AgentProvider> = []
 
     var body: some View {
         HStack(spacing: 1) {
-            ForEach(providers) { NotchAgentGlyph(provider: $0, size: CapsuleLayout.agentMarkSize(working: providers.count)) }
+            ForEach(providers) {
+                NotchAgentGlyph(provider: $0, size: CapsuleLayout.agentMarkSize(working: providers.count),
+                                needsInput: waitingProviders.contains($0))
+            }
         }
     }
 }
@@ -418,7 +422,7 @@ private struct NotchCapsuleCompanionMark: View {
         case .agents:
             NotchCapsuleAgentMarks(providers: AgentProvider.allCases.filter { provider in
                 usage.snapshot.live.contains { $0.provider == provider }
-            })
+            }, waitingProviders: Set(usage.snapshot.live.filter(\.isWaitingForInput).map(\.provider)))
         case .music:
             let side = CapsuleLayout.artworkSide(geometry)
             NotchMusicCover(artwork: music.artwork, side: side, radius: side / 2)
@@ -459,16 +463,15 @@ struct NotchCapsuleAgentStrip: View {
         let working = working(live)
         NotchCapsuleRow(size: size, geometry: displayGeometry ?? service.geometry) {
             HStack(spacing: CapsuleLayout.spacing) {
-                NotchCapsuleAgentMarks(providers: working)
+                NotchCapsuleAgentMarks(providers: working, waitingProviders: Set(live.filter(\.isWaitingForInput).map(\.provider)))
                 NotchAgentReadoutTimeline(readout: NotchAgentReadout(rawValue: readout) ?? .elapsed) { date in
-                    let text = reading(at: date, live: live)
-                    Text(text)
+                    let readings = readings(at: date, live: live)
+                    NotchAgentReadoutText(readings: readings)
                         .font(Font(CapsuleLayout.readingFont as CTFont))
-                        .foregroundStyle(working.first?.tint ?? .white)
                         .lineLimit(1).fixedSize()
                         // A reading that gains a digit, like an hour passing,
                         // widens the capsule; the service measures the same.
-                        .onChange(of: NotchAgentSupport.readingShape(text)) { _, _ in
+                        .onChange(of: NotchAgentSupport.readingShape(readings.map(\.text).joined(separator: " · "))) { _, _ in
                             DispatchQueue.main.async { service.refreshPresentation() }
                         }
                 }
@@ -481,9 +484,13 @@ struct NotchCapsuleAgentStrip: View {
     }
 
     private func reading(at now: Date, live: [AgentLiveSession]) -> String {
+        readings(at: now, live: live).map { "\($0.provider.displayName): \($0.text)" }.joined(separator: ", ")
+    }
+
+    private func readings(at now: Date, live: [AgentLiveSession]) -> [NotchAgentStripReading] {
         var snapshot = usage.snapshot
         snapshot.live = live
-        return NotchAgentSupport.stripReading(snapshot, readout: NotchAgentReadout(rawValue: readout) ?? .elapsed,
+        return NotchAgentSupport.stripReadings(snapshot, readout: NotchAgentReadout(rawValue: readout) ?? .elapsed,
                                               display: NotchAgentLimitDisplay(rawValue: display) ?? .remaining,
                                               focus: NotchAgentLimitFocus(rawValue: focus) ?? .mostUsed, now: now)
     }

@@ -170,6 +170,78 @@ enum AgentAntigravityTests {
                      "tokens are captured in usage record")
         suite.expect((usage?.cost ?? 0) > 0, "Gemini token cost is priced")
 
+        // 2b. Planner response with ask_question tool call emits turnWaitingInput and updates live session
+        let askQuestionStep = """
+        {"step_index":3,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-10-15T09:32:02Z","input_tokens":500,"output_tokens":100,"tool_calls":[{"name":"ask_question","args":{"questions":[{"question":"Which database mode?","options":["A","B"]}]}}]}
+        """.data(using: .utf8)!
+        let askEntries = AgentLogParser.parseGemini(askQuestionStep, state: &state, now: now)
+        let waiting = askEntries.compactMap { entry -> String? in
+            if case .turnWaitingInput(_, let prompt) = entry { return prompt }
+            return nil
+        }.first
+        suite.expect(waiting == "Which database mode?", "ask_question emits turnWaitingInput with the question prompt")
+
+        let store = AgentUsageStore()
+        store.reportsTransitions = true
+        var events = store.apply(userEntries, file: "/brain/s1/transcript.jsonl", provider: .gemini, tracksTurns: true, modified: now)
+        suite.expect(store.turns["/brain/s1/transcript.jsonl"]?.isWaitingForInput == false, "turn starts not waiting")
+        events = store.apply(askEntries, file: "/brain/s1/transcript.jsonl", provider: .gemini, tracksTurns: true, modified: now)
+        suite.expect(store.turns["/brain/s1/transcript.jsonl"]?.isWaitingForInput == true, "turn enters waiting for input state")
+        suite.expect(store.turns["/brain/s1/transcript.jsonl"]?.inputPrompt == "Which database mode?", "input prompt is recorded")
+        suite.expect(events == [.inputRequired(provider: .gemini, project: "my-app", prompt: "Which database mode?")],
+                     "store reports inputRequired event on question")
+
+        for type in ["EPHEMERAL_MESSAGE", "GENERIC"] {
+            let heartbeat = "{\"type\":\"\(type)\",\"created_at\":\"2026-10-15T09:32:03Z\"}".data(using: .utf8)!
+            let entries = AgentLogParser.parseGemini(heartbeat, state: &state, now: now)
+            let events = store.apply(entries, file: "/brain/s1/transcript.jsonl", provider: .gemini,
+                                     tracksTurns: true, modified: now)
+            suite.expect(store.turns["/brain/s1/transcript.jsonl"]?.isWaitingForInput == true
+                            && store.turns["/brain/s1/transcript.jsonl"]?.inputPrompt == waiting && events.isEmpty,
+                         "\(type) preserves the unanswered question without repeating the alert")
+            suite.expect(store.turns["/brain/s1/transcript.jsonl"]?.lastActivity == AgentLogParser.timestamp("2026-10-15T09:32:03Z"),
+                         "\(type) still refreshes the turn's activity")
+        }
+
+        for questions: Any in [
+            [["question": "Which database mode?"], ["question": "Keep the backup?"]],
+            #"[{"question":"Which database mode?"},{"question":"Keep the backup?"}]"#
+        ] {
+            let step = try! JSONSerialization.data(withJSONObject: ["type": "PLANNER_RESPONSE", "tool_calls": [
+                ["name": "ask_question", "args": ["questions": questions]]
+            ]])
+            let entries = AgentLogParser.parseGemini(step, state: &state, now: now)
+            suite.expect(entries.contains(.turnWaitingInput(now, prompt: "Which database mode?\nKeep the backup?")),
+                         "Gemini decodes every question from arrays and serialized JSON")
+        }
+        let malformed = #"{"type":"PLANNER_RESPONSE","tool_calls":[{"name":"ask_question","args":{"questions":"invalid JSON"}}]}"#.data(using: .utf8)!
+        suite.expect(AgentLogParser.parseGemini(malformed, state: &state, now: now)
+                        .contains(.turnWaitingInput(now, prompt: "Question")),
+                     "an unreadable Gemini question still marks the turn as needing input")
+
+        let questionTime = store.turns["/brain/s1/transcript.jsonl"]!.lastActivity
+        store.closeIdleTurns(now: questionTime.addingTimeInterval(NotchAgentSupport.idleTurn + 1),
+                             after: NotchAgentSupport.idleTurn)
+        suite.expect(store.live.first?.isWaitingForInput == true,
+                     "an unanswered question remains visible past the ordinary idle timeout")
+
+        // Responding with user input clears the waiting state
+        let nextUserInput = """
+        {"step_index":4,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-10-15T09:32:04Z","content":"Option A"}
+        """.data(using: .utf8)!
+        let resumeEntries = AgentLogParser.parseGemini(nextUserInput, state: &state, now: now)
+        _ = store.apply(resumeEntries, file: "/brain/s1/transcript.jsonl", provider: .gemini, tracksTurns: true, modified: now)
+        suite.expect(store.turns["/brain/s1/transcript.jsonl"]?.isWaitingForInput == false, "answering clears waiting for input")
+        suite.expect(store.turns["/brain/s1/transcript.jsonl"]?.inputPrompt == nil, "answering clears input prompt")
+
+        let abandoned = AgentUsageStore()
+        abandoned.apply([.turnWaitingInput(now, prompt: "Continue?")], file: "abandoned", provider: .gemini,
+                        tracksTurns: true, modified: now)
+        abandoned.closeIdleTurns(now: now.addingTimeInterval(AgentUsageStore.resumeWindow(for: .gemini)),
+                                 after: NotchAgentSupport.idleTurn)
+        suite.expect(abandoned.live.isEmpty && abandoned.waiting.isEmpty,
+                     "abandoned questions still age out after the provider's resume window")
+
         // 3. Final response without tool calls ends turn
         let finalStep = """
         {"step_index":5,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-10-15T09:32:05Z","input_tokens":1200,"cache_read_tokens":600,"output_tokens":400,"tool_calls":[]}

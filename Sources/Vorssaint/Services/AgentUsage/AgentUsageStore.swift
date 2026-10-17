@@ -105,20 +105,51 @@ final class AgentUsageStore {
                     if !project.isEmpty { turn.project = project }
                     waiting[file] = turn
                 }
+            case .turnHeartbeat(let date):
+                guard tracksTurns, var turn = turns[file] ?? waiting.removeValue(forKey: file) else { continue }
+                turn.lastActivity = max(turn.lastActivity, date ?? modified)
+                turns[file] = turn
             case .turnActive(let date):
                 guard tracksTurns else { continue }
                 settled[file] = nil
                 let moment = date ?? modified
                 if var turn = turns[file] ?? waiting.removeValue(forKey: file) {
                     turn.lastActivity = max(turn.lastActivity, moment)
+                    turn.isWaitingForInput = false
+                    turn.inputPrompt = nil
                     turns[file] = turn
                 } else {
                     turns[file] = AgentLiveSession(id: file, provider: provider, started: moment, lastActivity: moment,
                                                    model: "", project: "", tokens: AgentTokens(), cost: 0)
                 }
+            case .turnWaitingInput(let date, let prompt):
+                guard tracksTurns else { continue }
+                settled[file] = nil
+                let moment = date
+                if var turn = turns[file] ?? waiting.removeValue(forKey: file) {
+                    turn.lastActivity = max(turn.lastActivity, moment)
+                    let wasWaiting = turn.isWaitingForInput
+                    turn.isWaitingForInput = true
+                    turn.inputPrompt = prompt
+                    turns[file] = turn
+                    if !wasWaiting && reportsTransitions {
+                        events.append(.inputRequired(provider: provider, project: turn.project, prompt: prompt))
+                    }
+                } else {
+                    var turn = AgentLiveSession(id: file, provider: provider, started: moment, lastActivity: moment,
+                                                   model: "", project: "", tokens: AgentTokens(), cost: 0)
+                    turn.isWaitingForInput = true
+                    turn.inputPrompt = prompt
+                    turns[file] = turn
+                    if reportsTransitions {
+                        events.append(.inputRequired(provider: provider, project: "", prompt: prompt))
+                    }
+                }
             case .turnSettled(let date):
                 guard tracksTurns, var turn = turns[file] ?? waiting.removeValue(forKey: file) else { continue }
                 turn.lastActivity = max(turn.lastActivity, date)
+                turn.isWaitingForInput = false
+                turn.inputPrompt = nil
                 turns[file] = turn
                 settled[file] = date
             case .turnEnded(let date, let completed, let duration):
@@ -294,7 +325,8 @@ final class AgentUsageStore {
     /// It waits aside for a while, since work can resume after an approval
     /// or a long command.
     func closeIdleTurns(now: Date, after idle: TimeInterval) {
-        for (file, turn) in turns where now.timeIntervalSince(turn.lastActivity) >= idle {
+        for (file, turn) in turns where now.timeIntervalSince(turn.lastActivity)
+            >= (turn.isWaitingForInput ? Self.resumeWindow(for: turn.provider) : idle) {
             turns[file] = nil
             waiting[file] = turn
         }
@@ -578,6 +610,12 @@ final class AgentLogCursor {
         let parent = provider == .claude ? AgentLogCursor.parent(of: path) : nil
         self.parent = parent
         tracksTurns = provider == .claude ? parent == nil : (provider == .codex ? !name.contains("_") : true)
+        resetContext()
+    }
+
+    /// Context carried by the path must survive first reads and rewrites.
+    private func resetContext() {
+        state = AgentLogState()
         if provider == .gemini {
             let parts = path.split(separator: "/")
             if let brainIndex = parts.firstIndex(of: "brain"), brainIndex + 1 < parts.count {
@@ -617,7 +655,7 @@ final class AgentLogCursor {
         offset = 0
         pending = Data()
         discarding = false
-        state = AgentLogState()
+        resetContext()
         fingerprinted = nil
     }
 

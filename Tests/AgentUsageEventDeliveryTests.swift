@@ -10,9 +10,11 @@ enum AgentUsageEventDeliveryTests {
         static var minimum: TimeInterval? = 10
         static var threshold: Double? = 0.2
         static var budget: Double? = 1
+        static var input: Bool = true
         static func finishMinimum() -> TimeInterval? { minimum }
         static func limitThreshold() -> Double? { threshold }
         static func dailyBudget() -> Double? { budget }
+        static func inputAlert() -> Bool { input }
     }
 
     final class Events {
@@ -42,15 +44,17 @@ enum AgentUsageEventDeliveryTests {
             NotchAgentSupport.minimum = 10
             NotchAgentSupport.threshold = 0.2
             NotchAgentSupport.budget = 1
+            NotchAgentSupport.input = true
         }
         let host = Host()
         let finished = AgentUsageEvent.finished(provider: .claude, duration: 20, cost: 0.5,
-                                                  tokens: 30, project: "example")
+                                                   tokens: 30, project: "example")
         let window = AgentLimitWindow(id: "test", kind: .session, minutes: 300, scope: nil,
                                       usedPercent: 90, resetsAt: nil)
+        let inputEvent = AgentUsageEvent.inputRequired(provider: .claude, project: "example", prompt: "Choose an option")
         let events: [AgentUsageEvent] = [finished, .limitWarning(provider: .claude, window: window),
                                        .limitReset(provider: .claude, window: window),
-                                       .budgetReached(spent: 2, budget: 1)]
+                                       .budgetReached(spent: 2, budget: 1), inputEvent]
         for event in events { host.report(event) }
         // Stop/restart can finish on main before any queued event is delivered.
         host.session += 1
@@ -86,6 +90,8 @@ enum AgentUsageEventDeliveryTests {
         host.report(events[2])
         NotchAgentSupport.budget = nil
         host.report(events[3])
+        NotchAgentSupport.input = false
+        host.report(events[4])
         drain()
         suite.expect(host.events.values.isEmpty, "duration and disabled-alert preferences still filter current events")
     }

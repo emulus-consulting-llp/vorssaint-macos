@@ -36,6 +36,11 @@ enum NotchAgentTests {
         AgentCodexResetTests.run(suite)
         AgentAntigravityTests.run(suite)
         AgentPersonalLimitsTests.run(suite)
+        AgentInputStateTests.run(suite)
+        AgentCodexInputLogTests.run(suite)
+        AgentProviderInputLogTests.run(suite)
+        AgentPersistentInputTests.run(suite)
+        AgentCodexInputHookTests.run(suite)
         preferences(suite)
         agentDefaults(suite)
         formatting(suite)
@@ -454,6 +459,24 @@ enum NotchAgentTests {
         let structured = feed(line(#"{"type":"user","timestamp":"2026-09-21T23:40:15.000Z","sessionId":"s1","message":{"role":"user","content":[{"type":"tool_result","content":"Structured output provided successfully"}]},"toolUseResult":"Structured output provided successfully","toolEndsTurn":true}"#))
         suite.expect(store.live.isEmpty && structured.contains { if case .finished = $0 { true } else { false } },
                      "a tool that ends the turn finishes it without waiting for a reply")
+
+        _ = feed(claudeUser())
+        let askFollowup = line("""
+        {"type":"assistant","timestamp":"2026-09-21T23:45:00.000Z","sessionId":"s1","cwd":"/Users/me/code/app",\
+        "message":{"id":"msg_q","model":"claude-opus-5-5","role":"assistant","stop_reason":"tool_use",\
+        "content":[{"type":"tool_use","id":"tool_q","name":"AskFollowupQuestion","input":{"question":"Proceed with migration?"}}],\
+        "usage":{"input_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":20}}}
+        """)
+        let askEvents = feed(askFollowup)
+        suite.expect(store.turns["main"]?.isWaitingForInput == true && store.turns["main"]?.inputPrompt == "Proceed with migration?",
+                     "Claude AskFollowupQuestion marks session as waiting for input")
+        suite.expect(askEvents == [.inputRequired(provider: .claude, project: "app", prompt: "Proceed with migration?")],
+                     "Claude AskFollowupQuestion generates inputRequired event")
+        _ = feed(claudeUser("Yes please"))
+        suite.expect(store.turns["main"]?.isWaitingForInput == false && store.turns["main"]?.inputPrompt == nil,
+                     "Answering clears waiting for input on Claude session")
+        _ = feed(claudeAssistant(id: "msg_done", request: "req_done", stop: "end_turn"))
+        suite.expect(store.live.isEmpty, "turn finishes")
         suite.expect(feed(line(#"{"type":"user","timestamp":"2026-09-21T23:40:16.000Z","message":{"content":[{"type":"tool_result","content":"ok"}]},"toolEndsTurn":true}"#)).isEmpty
                         && store.live.isEmpty, "a turn-ending tool result alone never opens a turn")
         _ = feed(claudeUser())
@@ -2460,12 +2483,32 @@ enum NotchAgentTests {
         let short = snapshot([session(.claude, startedAgo: 754)])
         let long = snapshot([session(.claude, startedAgo: 3723), session(.codex, startedAgo: 60)])
         suite.expect(NotchAgentSupport.stripReading(short, readout: .elapsed, display: .remaining, now: now) == "12:34"
-                        && NotchAgentSupport.stripReading(long, readout: .elapsed, display: .remaining, now: now) == "1:02:03",
-                     "the strip counts from the earliest turn still working")
+                        && NotchAgentSupport.stripReading(long, readout: .elapsed, display: .remaining, now: now) == "1:02:03 · 1:00",
+                     "the strip shows a separate timer for each active provider")
         suite.expect(NotchAgentSupport.stripReading(short, readout: .cost, display: .remaining, now: now) == AgentFormat.cost(4.56)
                         && NotchAgentSupport.stripReading(long, readout: .tokens, display: .remaining, now: now)
-                            == AgentFormat.tokens(600),
-                     "cost and written tokens add up every turn that is working")
+                            == "\(AgentFormat.tokens(300)) · \(AgentFormat.tokens(300))",
+                     "cost and written tokens are attributed to each working provider")
+        let grouped = snapshot([session(.codex, startedAgo: 60), session(.claude, startedAgo: 3723),
+                                session(.claude, startedAgo: 20)])
+        suite.expect(NotchAgentSupport.stripReading(grouped, readout: .elapsed, display: .remaining, now: now)
+                        == "1:02:03 · 1:00"
+                        && NotchAgentSupport.stripReading(grouped, readout: .tokens, display: .remaining, now: now)
+                            == "\(AgentFormat.tokens(600)) · \(AgentFormat.tokens(300))",
+                     "sessions from one provider share its oldest timer and summed usage in stable mark order")
+        var question = session(.codex, startedAgo: 60)
+        question.isWaitingForInput = true
+        let waiting = snapshot([question, session(.claude, startedAgo: 754), session(.codex, startedAgo: 20)])
+        for readout in NotchAgentReadout.allCases {
+            let readings = NotchAgentSupport.stripReadings(waiting, readout: readout, display: .remaining, now: now)
+            suite.expect(readings.map(\.provider) == [.claude, .codex]
+                            && readings.last?.text == "Input" && readings.last?.needsInput == true
+                            && readings.first?.needsInput == false,
+                         "\(readout) highlights only the provider with an unanswered question")
+        }
+        suite.expect(NotchAgentSupport.stripReading(waiting, readout: .elapsed, display: .remaining, now: now)
+                        == "12:34 · Input",
+                     "an input prompt appears beside the other provider's running timer")
         for readout in [NotchAgentReadout.tokens, .cost] {
             suite.expect(NotchAgentSupport.stripReading(short, readout: readout, display: .remaining, now: now)
                             == NotchAgentSupport.stripReading(short, readout: readout, display: .remaining,
@@ -2483,6 +2526,10 @@ enum NotchAgentTests {
                         && NotchAgentSupport.stripReading(limited, readout: .limit, display: .used, now: now) == AgentFormat.percent(0.79)
                         && NotchAgentSupport.stripReading(short, readout: .limit, display: .remaining, now: now) == "12:34",
                      "a limit reads as left or used, and falls back to the time while none is known")
+        let mixed = snapshot([session(.codex, startedAgo: 60), session(.claude, startedAgo: 754)], limits: limited.limits)
+        suite.expect(NotchAgentSupport.stripReading(mixed, readout: .limit, display: .remaining, now: now)
+                        == "\(AgentFormat.percent(0.21)) · 1:00",
+                     "each provider uses its own limit or falls back to its own elapsed time")
         let both = AgentLimits(provider: .claude, windows: [
             AgentLimitWindow(id: "s", kind: .session, minutes: 300, scope: nil, usedPercent: 22,
                              resetsAt: now.addingTimeInterval(3_600)),
@@ -2528,7 +2575,7 @@ enum NotchAgentTests {
                         && geometry.compactAgentGeometry(wing: 57.2).compactActivitySize.width == 185 + 116,
                      "the wings take the width the reading needs, with the camera between them")
         suite.expect(geometry.compactAgentGeometry(wing: 12).compactActivityWingWidth == 44
-                        && geometry.compactAgentGeometry(wing: 300).compactActivityWingWidth == 80,
+                        && geometry.compactAgentGeometry(wing: 300).compactActivityWingWidth == 120,
                      "a wing is never narrower than the music strip's nor wider than the menus allow")
         var crowded = geometry
         crowded.compactSideRoom = 30

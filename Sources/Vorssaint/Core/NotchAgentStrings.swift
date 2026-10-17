@@ -40,6 +40,10 @@ struct NotchAgentStrings {
     let activeDays: String
     let busiestDay: String
     let finishedFormat: String
+    var inputRequiredFormat: String = "%@ needs input"
+    var inputAlert: String = "When input is required"
+    var actionRequired: String = "Action required"
+    var needsInput: String = "Needs Input"
     let limitRenewed: String
     let budgetTitle: String
     let leftFormat: String
@@ -104,6 +108,7 @@ struct NotchAgentStrings {
     func saved(_ amount: String) -> String { String(format: savedFormat, amount) }
     func planMultiple(_ multiple: String, plan: String) -> String { String(format: planMultipleFormat, multiple, plan) }
     func finished(_ agent: String) -> String { String(format: finishedFormat, agent) }
+    func inputRequired(_ agent: String) -> String { String(format: inputRequiredFormat, agent) }
     func left(_ share: String) -> String { String(format: leftFormat, share) }
     func usedShare(_ share: String) -> String { String(format: usedFormat, share) }
     func updated(_ when: String) -> String { String(format: updatedFormat, when) }

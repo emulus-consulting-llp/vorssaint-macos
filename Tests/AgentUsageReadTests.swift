@@ -107,6 +107,26 @@ enum AgentUsageReadTests {
         catch { suite.expect(false, "the streaming fixture creates its folder: \(error)"); return }
         let now = Date()
         let timestamp = now.timeIntervalSince1970
+        let geminiHost = Host()
+        var geminiFiles: [URL] = []
+        for (session, input) in [("one", 10), ("two", 20)] {
+            let file = folder.appending(path: "brain/\(session)/transcript.jsonl")
+            try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let step = #"{"type":"PLANNER_RESPONSE","step_index":2,"input_tokens":\#(input),"tool_calls":[]}"#
+            try? Data((step + "\n").utf8).write(to: file)
+            geminiFiles.append(file)
+            geminiHost.read(file.path, provider: .gemini)
+        }
+        suite.expect(geminiHost.store.records.count == 2 && geminiHost.store.records.reduce(0) { $0 + $1.tokens.input } == 30
+                        && Set(geminiHost.store.records.map(\.session)) == ["one", "two"],
+                     "first Gemini reads retain path-derived session IDs and never merge unrelated steps")
+        for file in geminiFiles {
+            let cursor = geminiHost.cursors[file.path]!
+            cursor.startOver(identity: 0)
+            geminiHost.read(file.path, provider: .gemini)
+        }
+        suite.expect(geminiHost.store.records.count == 2 && geminiHost.store.records.reduce(0) { $0 + $1.tokens.input } == 30,
+                     "Gemini cursor resets keep usage keys stable without duplicate or cross-session accounting")
         let cases: [(AgentProvider, [String])] = [
             (.claude, [
                 #"{"type":"user","timestamp":\#(timestamp),"sessionId":"s","message":{"content":"work"}}"#,

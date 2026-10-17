@@ -880,6 +880,7 @@ enum DefaultsKey {
     static let notchAgentsReadout = "notchAgentsReadout"
     static let notchAgentsFinishAlert = "notchAgentsFinishAlert"
     static let notchAgentsFinishMinimum = "notchAgentsFinishMinimum"
+    static let notchAgentsInputAlert = "notchAgentsInputAlert"
     static let notchAgentsLimitAlert = "notchAgentsLimitAlert"
     static let notchAgentsLimitThreshold = "notchAgentsLimitThreshold"
     static let notchAgentsDailyBudget = "notchAgentsDailyBudget"
@@ -1463,6 +1464,7 @@ enum Defaults {
         DefaultsKey.notchAgentsReadout: NotchAgentReadout.elapsed.rawValue,
         DefaultsKey.notchAgentsFinishAlert: true,
         DefaultsKey.notchAgentsFinishMinimum: NotchAgentSupport.defaultFinishMinimum,
+        DefaultsKey.notchAgentsInputAlert: true,
         DefaultsKey.notchAgentsLimitAlert: true,
         DefaultsKey.notchAgentsLimitThreshold: NotchAgentSupport.defaultLimitThreshold,
         DefaultsKey.notchAgentsDailyBudget: 0.0,

@@ -32,7 +32,6 @@ struct NotchAgentStrip: View {
         // walks the preferences for every font, inset and frame.
         let geometry = displayGeometry ?? service.compactActivityGeometry
         let working = working(live)
-        let tint = working.first?.tint ?? .white
         let budget = geometry.compactActivityContentHeight - NotchLayout.compactEdgeGap * 2
         let iconSize = min(working.count > 1 ? 11.0 : 14.0, max(8, budget - 4))
         let textSize = NotchAgentSupport.stripTextSize(height: geometry.compactActivityContentHeight)
@@ -44,7 +43,10 @@ struct NotchAgentStrip: View {
             Button { service.openActivity(.agents) } label: {
                 HStack(spacing: 1) {
                     if geometry.compactActivityWingWidth >= 28 {
-                        ForEach(working) { NotchAgentGlyph(provider: $0, size: iconSize) }
+                        ForEach(working) { provider in
+                            NotchAgentGlyph(provider: provider, size: iconSize,
+                                            needsInput: live.contains { $0.provider == provider && $0.isWaitingForInput })
+                        }
                     }
                 }
                 .padding(.leading, iconInset)
@@ -57,17 +59,16 @@ struct NotchAgentStrip: View {
                 Group {
                     if geometry.compactActivityWingWidth >= 42 {
                         NotchAgentReadoutTimeline(readout: NotchAgentReadout(rawValue: readout) ?? .elapsed) { date in
-                            let text = reading(at: date, live: live)
-                            Text(text)
+                            let readings = readings(at: date, live: live)
+                            NotchAgentReadoutText(readings: readings)
                                 .font(.system(size: textSize, weight: .medium))
                                 .monospacedDigit()
-                                .foregroundStyle(tint)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.6)
                                 // A reading that gains a digit, like an hour
                                 // passing, needs wider wings; the service
                                 // measures the same reading.
-                                .onChange(of: NotchAgentSupport.readingShape(text)) { _, _ in
+                                .onChange(of: NotchAgentSupport.readingShape(readings.map(\.text).joined(separator: " · "))) { _, _ in
                                     DispatchQueue.main.async { service.refreshPresentation() }
                                 }
                         }
@@ -92,11 +93,40 @@ struct NotchAgentStrip: View {
     }
 
     private func reading(at now: Date, live: [AgentLiveSession]) -> String {
+        readings(at: now, live: live).map { "\($0.provider.displayName): \($0.text)" }.joined(separator: ", ")
+    }
+
+    private func readings(at now: Date, live: [AgentLiveSession]) -> [NotchAgentStripReading] {
         var snapshot = usage.snapshot
         snapshot.live = live
-        return NotchAgentSupport.stripReading(snapshot, readout: NotchAgentReadout(rawValue: readout) ?? .elapsed,
+        return NotchAgentSupport.stripReadings(snapshot, readout: NotchAgentReadout(rawValue: readout) ?? .elapsed,
                                               display: NotchAgentLimitDisplay(rawValue: display) ?? .remaining,
                                               focus: NotchAgentLimitFocus(rawValue: focus) ?? .mostUsed, now: now)
+    }
+}
+
+/// A single text view scales and measures like the joined layout reading,
+/// while each provider keeps its tint and only unanswered prompts turn orange.
+struct NotchAgentReadoutText: View {
+    let readings: [NotchAgentStripReading]
+
+    var body: some View {
+        Text(attributedReading)
+    }
+
+    private var attributedReading: AttributedString {
+        var text = AttributedString()
+        for reading in readings {
+            if !text.characters.isEmpty {
+                var separator = AttributedString(" · ")
+                separator.foregroundColor = .secondary
+                text.append(separator)
+            }
+            var value = AttributedString(reading.text)
+            value.foregroundColor = reading.needsInput ? .orange : reading.provider.tint
+            text.append(value)
+        }
+        return text
     }
 }
 

@@ -332,6 +332,7 @@ final class AgentUsageService: ObservableObject {
             // The account Claude Code uses picks the Claude app's readings.
             readClaudePlan()
             readClaudeApp(now: now)
+            readCodexInput(now: now)
             store.reportsTransitions = true
             previousLimits = store.limits
             // A budget already passed before launch is history, not news.
@@ -405,6 +406,9 @@ final class AgentUsageService: ObservableObject {
             guard let self else { return }
             defer { self.syncPolling() }
             let read = self.pollOpenLogs(within: Self.pollWindow)
+            let inputBefore = self.store.turns
+            self.readCodexInput(now: Date())
+            let inputChanged = self.store.turns != inputBefore
             var stopped = self.store.closeSettledTurns(now: Date())
             // After the logs too, which can hold a reply or a command's
             // result written meanwhile.
@@ -415,7 +419,7 @@ final class AgentUsageService: ObservableObject {
                 stopped = true
             }
             // After the logs, so a turn its last lines ended ends as usual.
-            guard self.closeEndedTurns(self.watchedRoots) || read || stopped else { return }
+            guard self.closeEndedTurns(self.watchedRoots) || read || stopped || inputChanged else { return }
             self.checkLimits()
             self.schedulePublish()
         }
@@ -682,6 +686,17 @@ final class AgentUsageService: ObservableObject {
 
     // MARK: Alerts
 
+    /// The optional Codex hook reports actual permission waits, including file
+    /// edits without a model-authored escalation flag. Failed reads preserve the
+    /// previous state until a log result, lifecycle hook or expiry resolves it.
+    private func readCodexInput(now: Date) {
+        guard enabled.contains(.codex), let sessions = AgentCodexInputHook.load(home: home, now: now) else { return }
+        for cursor in cursors.values where cursor.provider == .codex && cursor.tracksTurns {
+            let requests = sessions[cursor.state.session] ?? []
+            AgentCodexInputHook.apply(requests, cursor: cursor, store: store, now: now).forEach(report)
+        }
+    }
+
     /// Filters by the person's choices on the main thread, where they live.
     private func report(_ event: AgentUsageEvent) {
         let session = readerSession
@@ -695,6 +710,8 @@ final class AgentUsageService: ObservableObject {
                 guard self.providers.contains(provider), NotchAgentSupport.limitThreshold() != nil else { return }
             case .budgetReached:
                 guard NotchAgentSupport.dailyBudget() != nil else { return }
+            case .inputRequired(let provider, _, _):
+                guard self.providers.contains(provider), NotchAgentSupport.inputAlert() else { return }
             }
             self.events.send(event)
         }

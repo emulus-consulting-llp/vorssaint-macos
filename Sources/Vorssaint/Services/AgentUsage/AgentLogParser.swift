@@ -7,8 +7,8 @@ import Foundation
 /// What one log line says, reduced to the few facts the island keeps. Only
 /// usage counters, model names, times and folder names leave a line, besides
 /// the identifiers of Claude's shell commands still running, held in memory
-/// only; prompts, replies and tool output are never decoded into anything
-/// that is stored.
+/// only. Pending question text is decoded for the live UI and never archived;
+/// other prompts, replies and tool output are not retained.
 enum AgentLogEntry: Equatable {
     /// `key` identifies the response across duplicate lines and files.
     case usage(key: String, record: AgentUsageRecord, billable: AgentBillable)
@@ -21,6 +21,10 @@ enum AgentLogEntry: Equatable {
     case turnContext(model: String, project: String)
     /// Work continues; nil when the line was not worth decoding for its time.
     case turnActive(Date?)
+    /// A status message keeps the turn alive without answering its question.
+    case turnHeartbeat(Date?)
+    /// The agent paused expecting user input, approval, or response to a question.
+    case turnWaitingInput(Date, prompt: String?)
     /// A step ended expecting the agent to go on; unless work follows soon,
     /// the agent stopped there and its turn is over.
     case turnSettled(Date)
@@ -34,6 +38,9 @@ struct AgentLogState: Equatable {
     var project = ""
     var model = ""
     var turnOpen = false
+    /// Metadata only: question text stays in the live store, never in cursor progress.
+    var inputRequestedAt: Date?
+    var pendingQuestionIDs: Set<String> = []
     /// Newer logs write one usage record per response; older ones only carry
     /// running totals, which are the fallback until a record appears.
     var sawUsageRecords = false
@@ -111,6 +118,8 @@ enum AgentLogParser {
 
     private static let codexEvents: Set<String> = [
         "token_count", "task_started", "task_complete", "turn_aborted", "thread_settings_applied",
+        "approval_requested", "user_input_requested",
+        "item_completed",
     ]
 
     private static func object(_ line: Data) -> [String: Any]? {
@@ -129,6 +138,8 @@ enum AgentLogParser {
            let json = object(line), json["type"] as? String == "user", endsTurn(json) {
             let open = state.turnOpen
             state.turnOpen = false
+            state.inputRequestedAt = nil
+            state.pendingQuestionIDs = []
             return open ? [.turnEnded(nil, completed: false, duration: nil)] : []
         }
         // A tool that ends the turn, like the structured output a scripted
@@ -137,11 +148,28 @@ enum AgentLogParser {
            json["toolEndsTurn"] as? Bool == true, json["isSidechain"] as? Bool != true {
             let open = state.turnOpen
             state.turnOpen = false
+            state.inputRequestedAt = nil
+            state.pendingQuestionIDs = []
             return open ? [.turnEnded(timestamp(json["timestamp"]) ?? now, completed: true, duration: nil)] : []
         }
         // Tool results arrive inside a turn and can be large; while a turn is
         // open, the line only has to say that work goes on.
         if state.turnOpen {
+            if state.inputRequestedAt != nil, let json = object(line),
+               json["isMeta"] as? Bool != true, json["isSidechain"] as? Bool != true {
+                let content = (json["message"] as? [String: Any])?["content"]
+                let blocks = content as? [[String: Any]] ?? []
+                let results = blocks.filter { $0["type"] as? String == "tool_result" }
+                let resultIDs = Set(results.compactMap { $0["tool_use_id"] as? String })
+                let answered = !state.pendingQuestionIDs.isDisjoint(with: resultIDs)
+                state.pendingQuestionIDs.subtract(resultIDs)
+                let userText = (content as? String)?.isEmpty == false
+                    || blocks.contains { $0["type"] as? String == "text" && ($0["text"] as? String)?.isEmpty == false }
+                if (answered && state.pendingQuestionIDs.isEmpty) || (results.isEmpty && userText) {
+                    state.inputRequestedAt = nil
+                    state.pendingQuestionIDs = []
+                }
+            }
             if !state.runningCommands.isEmpty, let json = object(line), json["type"] as? String == "user",
                json["isMeta"] as? Bool != true, json["isSidechain"] as? Bool != true {
                 let content = (json["message"] as? [String: Any])?["content"]
@@ -158,7 +186,7 @@ enum AgentLogParser {
                     state.runningCommands = []
                 }
             }
-            return [.turnActive(nil)]
+            return state.inputRequestedAt == nil ? [.turnActive(nil)] : [.turnHeartbeat(nil)]
         }
         // A subagent's prompts and tool output never open a turn, and its
         // tool output can be large: no need to decode it to know that.
@@ -167,6 +195,8 @@ enum AgentLogParser {
               json["isMeta"] as? Bool != true, json["isSidechain"] as? Bool != true else { return [] }
         adopt(json, into: &state)
         state.turnOpen = true
+        state.inputRequestedAt = nil
+        state.pendingQuestionIDs = []
         state.runningCommands = []
         return [.turnBegan(timestamp(json["timestamp"]) ?? now)]
     }
@@ -209,15 +239,43 @@ enum AgentLogParser {
             let failed = json["isApiErrorMessage"] as? Bool == true || model.hasPrefix("<")
             if state.turnOpen { entries.append(.turnEnded(date, completed: !failed, duration: nil)) }
             state.turnOpen = false
+            state.inputRequestedAt = nil
+            state.pendingQuestionIDs = []
         default:
+            var waitingQuestions: [String] = []
             for block in message["content"] as? [[String: Any]] ?? []
-            where block["type"] as? String == "tool_use" && block["name"] as? String == "Bash" {
-                if let id = block["id"] as? String { state.runningCommands.insert(id) }
+            where block["type"] as? String == "tool_use" {
+                let name = block["name"] as? String ?? ""
+                if name == "AskFollowupQuestion" || name == "ask_followup_question" || name == "AskUserQuestion" {
+                    var prompt = "Question"
+                    if let input = block["input"] as? [String: Any] {
+                        let questions = (input["questions"] as? [[String: Any]] ?? []).compactMap {
+                            ($0["question"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                        }.filter { !$0.isEmpty }
+                        if !questions.isEmpty { prompt = questions.joined(separator: "\n") }
+                        else if let q = input["question"] as? String, !q.isEmpty { prompt = q }
+                        else if let p = input["prompt"] as? String, !p.isEmpty { prompt = p }
+                    }
+                    waitingQuestions.append(prompt)
+                    if let id = block["id"] as? String { state.pendingQuestionIDs.insert(id) }
+                } else if name == "Bash" {
+                    if let id = block["id"] as? String { state.runningCommands.insert(id) }
+                }
             }
-            // Ahead of the usage, so a reply that opens the turn again, as
-            // after an offline end, counts toward it.
-            entries.insert(state.turnOpen ? .turnActive(date) : .turnBegan(date), at: 0)
-            state.turnOpen = true
+            if !waitingQuestions.isEmpty {
+                if !state.turnOpen {
+                    entries.insert(.turnBegan(date), at: 0)
+                }
+                state.inputRequestedAt = date
+                entries.append(.turnWaitingInput(date, prompt: waitingQuestions.joined(separator: "\n")))
+                state.turnOpen = true
+            } else {
+                // Ahead of the usage, so a reply that opens the turn again, as
+                // after an offline end, counts toward it.
+                entries.insert(state.turnOpen ? (state.inputRequestedAt == nil ? .turnActive(date) : .turnHeartbeat(date))
+                    : .turnBegan(date), at: 0)
+                state.turnOpen = true
+            }
         }
         return entries
     }
@@ -249,9 +307,11 @@ enum AgentLogParser {
     static func parseCodex(_ line: Data, state: inout AgentLogState, now: Date) -> [AgentLogEntry] {
         guard let kind = firstType(line) else { return [] }
         switch kind.name {
+        case "response_item": return codexResponseItem(line, state: &state, now: now)
         case "token_usage_record", "turn_context", "session_meta": break
         case "event_msg":
-            guard let event = firstType(line, from: kind.end), codexEvents.contains(event.name) else { return [] }
+            guard let event = AgentLogObject(line)?.object("payload")?.string("type"), codexEvents.contains(event) else { return [] }
+            if event == "item_completed" { return codexCompletedItem(line, state: &state, now: now) }
         default: return []
         }
         guard let json = object(line), let payload = json["payload"] as? [String: Any] else { return [] }
@@ -274,7 +334,7 @@ enum AgentLogParser {
             }
             let response = payload["response_id"] as? String ?? ""
             let key = response.isEmpty ? "codex:\(state.session):\(date.timeIntervalSince1970)" : "codex:\(response)"
-            return [codexUsage(codexTokens(usage), key: key, date: date, state: state)]
+            return codexResumed([codexUsage(codexTokens(usage), key: key, date: date, state: state)], date: date, state: &state)
         case "event_msg":
             return codexEvent(payload, date: date, state: &state)
         default:
@@ -317,7 +377,7 @@ enum AgentLogParser {
                 }
                 state.lastTotal = total
             }
-            return entries
+            return codexResumed(entries, date: date, state: &state)
         case "thread_settings_applied":
             if let tier = (payload["thread_settings"] as? [String: Any])?["service_tier"] as? String {
                 state.fast = fastTier(tier)
@@ -325,17 +385,170 @@ enum AgentLogParser {
             return []
         case "task_started":
             state.turnOpen = true
+            state.inputRequestedAt = nil
+            state.pendingQuestionIDs = []
             return [.turnBegan(seconds(payload["started_at"]) ?? date)]
         case "task_complete", "turn_aborted":
             let open = state.turnOpen
             state.turnOpen = false
+            state.inputRequestedAt = nil
+            state.pendingQuestionIDs = []
             guard open else { return [] }
             let duration = (payload["duration_ms"] as? NSNumber).map { $0.doubleValue / 1000 }
             return [.turnEnded(seconds(payload["completed_at"]) ?? date,
                                completed: payload["type"] as? String == "task_complete", duration: duration)]
+        case "approval_requested", "user_input_requested":
+            state.turnOpen = true
+            state.inputRequestedAt = date
+            let prompt = payload["prompt"] as? String ?? payload["message"] as? String ?? "Approval requested"
+            return [.turnWaitingInput(date, prompt: prompt)]
         default:
             return []
         }
+    }
+
+    private static func codexResumed(_ entries: [AgentLogEntry], date: Date, state: inout AgentLogState) -> [AgentLogEntry] {
+        guard state.pendingQuestionIDs.isEmpty, let requested = state.inputRequestedAt, date >= requested,
+              entries.contains(where: { if case .usage(_, let record, _) = $0 { return record.tokens.total > 0 }; return false })
+        else { return entries }
+        state.inputRequestedAt = nil
+        return [.turnActive(date)] + entries
+    }
+
+    /// Current Codex logs record questions and approvals as tool calls,
+    /// including tools invoked through the JavaScript execution wrapper.
+    private static func codexResponseItem(_ line: Data, state: inout AgentLogState, now: Date) -> [AgentLogEntry] {
+        guard let envelope = AgentLogObject(line), let payload = envelope.object("payload"),
+              let type = payload.string("type") else { return [] }
+        let date = timestamp(envelope.value("timestamp")) ?? now
+        if type == "message", payload.string("role") == "user" {
+            return codexInputAnswered(date, state: &state)
+        }
+        let call = payload.string("call_id") ?? ""
+        if type == "function_call_output" || type == "custom_tool_call_output" {
+            guard state.pendingQuestionIDs.remove(call) != nil else { return [] }
+            return state.pendingQuestionIDs.isEmpty ? codexInputAnswered(date, state: &state) : [.turnHeartbeat(date)]
+        }
+        guard type == "function_call" || type == "custom_tool_call",
+              let rawName = payload.string("name") else { return [] }
+        let name = rawName.split(separator: ".").last.map(String.init) ?? rawName
+        var prompt: String?
+        let asynchronous = name == "request_user_input_async"
+        if name == "request_user_input" || asynchronous {
+            if let arguments = payload.string("arguments"), let data = arguments.data(using: .utf8),
+               let args = object(data) {
+                prompt = codexQuestionPrompt(args["questions"]) ?? "Question"
+            } else { prompt = "Question" }
+        } else if name == "exec_command" {
+            if let arguments = payload.string("arguments"), let data = arguments.data(using: .utf8),
+               let args = object(data), args["sandbox_permissions"] as? String == "require_escalated" {
+                prompt = args["justification"] as? String ?? "Command approval requested"
+            }
+        } else if type == "custom_tool_call", name == "exec", let source = payload.string("input") {
+            prompt = codexScriptApproval(source)
+        }
+        guard let prompt else { return [] }
+        if !call.isEmpty { state.pendingQuestionIDs.insert((asynchronous ? "async:" : "") + call) }
+        state.turnOpen = true
+        state.inputRequestedAt = date
+        return [.turnWaitingInput(date, prompt: prompt)]
+    }
+
+    private static func codexCompletedItem(_ line: Data, state: inout AgentLogState, now: Date) -> [AgentLogEntry] {
+        guard let envelope = AgentLogObject(line), let payload = envelope.object("payload"),
+              let item = payload.object("item") else { return [] }
+        let date = seconds(payload.value("completed_at_ms")) ?? now
+        if item.string("type") == "UserMessage" { return codexInputAnswered(date, state: &state) }
+        guard item.string("type") == "AgentMessage", let prompt = codexQuestionPrompt(item.value("questions")) else { return [] }
+        // This is the displayed counterpart of the async tool call, not a
+        // second outstanding question. Some log versions write only this item.
+        if state.pendingQuestionIDs.isEmpty, let id = item.string("id") { state.pendingQuestionIDs.insert("async:" + id) }
+        state.turnOpen = true
+        state.inputRequestedAt = date
+        return [.turnWaitingInput(date, prompt: prompt)]
+    }
+
+    private static func codexQuestionPrompt(_ value: Any?) -> String? {
+        let questions = (value as? [[String: Any]] ?? []).compactMap {
+            ($0["question"] as? String ?? $0["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { !$0.isEmpty }
+        return questions.isEmpty ? nil : questions.joined(separator: "\n")
+    }
+
+    private static func codexInputAnswered(_ date: Date, state: inout AgentLogState) -> [AgentLogEntry] {
+        guard state.inputRequestedAt != nil else { return [] }
+        state.inputRequestedAt = nil
+        state.pendingQuestionIDs = []
+        return [.turnActive(date)]
+    }
+
+    private enum CodexScriptToken {
+        case word(String), text(String), symbol(UInt8)
+        var value: String? { switch self { case .word(let value), .text(let value): return value; default: return nil } }
+        func isSymbol(_ value: UInt8) -> Bool { if case .symbol(let symbol) = self { return symbol == value }; return false }
+    }
+
+    /// Inspect calls without executing code or mistaking quoted examples and
+    /// comments for a permission request. Command contents are never returned.
+    private static func codexScriptApproval(_ source: String) -> String? {
+        guard source.utf8.count <= 512 * 1024 else { return nil }
+        let bytes = Array(source.utf8)
+        var tokens: [CodexScriptToken] = []
+        var index = 0
+        while index < bytes.count {
+            let byte = bytes[index]
+            if [9, 10, 13, 32].contains(byte) { index += 1; continue }
+            if byte == 47, index + 1 < bytes.count, bytes[index + 1] == 47 {
+                while index < bytes.count, bytes[index] != 10 { index += 1 }
+                continue
+            }
+            if byte == 47, index + 1 < bytes.count, bytes[index + 1] == 42 {
+                index += 2
+                while index + 1 < bytes.count, !(bytes[index] == 42 && bytes[index + 1] == 47) { index += 1 }
+                index = min(bytes.count, index + 2)
+                continue
+            }
+            if [34, 39, 96].contains(byte) {
+                let quote = byte
+                index += 1
+                var text: [UInt8] = []
+                while index < bytes.count, bytes[index] != quote {
+                    if bytes[index] == 92, index + 1 < bytes.count {
+                        index += 1
+                        text.append(bytes[index] == 110 ? 10 : bytes[index])
+                    } else { text.append(bytes[index]) }
+                    index += 1
+                }
+                index = min(bytes.count, index + 1)
+                tokens.append(.text(String(decoding: text, as: UTF8.self)))
+            } else if (65...90).contains(byte) || (97...122).contains(byte) || byte == 95 || byte == 36 {
+                let start = index
+                repeat { index += 1 } while index < bytes.count && ((65...90).contains(bytes[index])
+                    || (97...122).contains(bytes[index]) || (48...57).contains(bytes[index]) || [95, 36].contains(bytes[index]))
+                tokens.append(.word(String(decoding: bytes[start..<index], as: UTF8.self)))
+            } else { tokens.append(.symbol(byte)); index += 1 }
+        }
+        guard tokens.count >= 5 else { return nil }
+        for start in 0..<(tokens.count - 4) {
+            guard case .word("tools") = tokens[start], tokens[start + 1].isSymbol(46),
+                  case .word("exec_command") = tokens[start + 2], tokens[start + 3].isSymbol(40),
+                  tokens[start + 4].isSymbol(123) else { continue }
+            var cursor = start + 5
+            var depth = 1
+            var requested = false
+            var justification: String?
+            while cursor < tokens.count, depth > 0 {
+                if depth == 1, cursor + 2 < tokens.count, tokens[cursor + 1].isSymbol(58) {
+                    if tokens[cursor].value == "sandbox_permissions", case .text("require_escalated") = tokens[cursor + 2] { requested = true }
+                    if tokens[cursor].value == "justification", case .text(let text) = tokens[cursor + 2] { justification = text }
+                }
+                if tokens[cursor].isSymbol(123) || tokens[cursor].isSymbol(91) || tokens[cursor].isSymbol(40) { depth += 1 }
+                if tokens[cursor].isSymbol(125) || tokens[cursor].isSymbol(93) || tokens[cursor].isSymbol(41) { depth -= 1 }
+                cursor += 1
+            }
+            if requested { return justification ?? "Command approval requested" }
+        }
+        return nil
     }
 
     /// Fast mode, named priority before July 2026.
@@ -501,9 +714,12 @@ enum AgentLogParser {
             // summary of a compaction it started on its own. Any other finish
             // stops it, as does an error or a reply that completes without a
             // finish, like a shell command's.
+            let isWaitingInput = finish == "question" && !hasError
             let ends: Bool
             if hasError {
                 ends = true
+            } else if isWaitingInput {
+                ends = false
             } else if let finish {
                 ends = !["tool-calls", "unknown"].contains(finish)
                     && json["tool_calls"] as? Bool != true && json["auto_compaction"] as? Bool != true
@@ -511,7 +727,9 @@ enum AgentLogParser {
                 ends = completed != nil
             }
 
-            if ends {
+            if isWaitingInput && !isAlreadyCompleted && matchesActivePrompt {
+                entries.append(.turnWaitingInput(date, prompt: "Question"))
+            } else if ends {
                 if !isAlreadyCompleted && matchesActivePrompt && sessionState.turnOpen {
                     let endDate = completed ?? seconds(json["time_updated"]) ?? date
                     var duration: TimeInterval?
@@ -951,9 +1169,28 @@ enum AgentLogParser {
             }
 
             if !toolCalls.isEmpty {
+                var waitingQuestion: String?
+                for call in toolCalls {
+                    let name = call["name"] as? String ?? call["tool_name"] as? String ?? ""
+                    if name == "ask_question" {
+                        let args = call["args"] as? [String: Any]
+                        var questions = args?["questions"] as? [[String: Any]]
+                        if let serialized = args?["questions"] as? String,
+                           let data = serialized.data(using: .utf8) {
+                            questions = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]]
+                        }
+                        let prompts = (questions ?? []).compactMap { ($0["question"] as? String)?
+                            .trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+                        waitingQuestion = prompts.isEmpty ? "Question" : prompts.joined(separator: "\n")
+                        break
+                    }
+                }
                 if !state.turnOpen {
                     state.turnOpen = true
                     entries.insert(.turnBegan(date), at: 0)
+                }
+                if let question = waitingQuestion {
+                    entries.append(.turnWaitingInput(date, prompt: question))
                 } else {
                     entries.append(.turnActive(date))
                 }
@@ -967,7 +1204,7 @@ enum AgentLogParser {
 
         case "GENERIC", "EPHEMERAL_MESSAGE":
             if state.turnOpen {
-                return [.turnActive(date)]
+                return [.turnHeartbeat(date)]
             }
             return []
 

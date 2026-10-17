@@ -19,6 +19,10 @@ struct NotchNotice: Equatable {
     /// With the companion on, it takes the symbol's place in the notice and
     /// plays this, so the notice itself is its reaction.
     var mascot: NotchMascotReaction? = nil
+    /// An override for notices with a different reading time.
+    var duration: TimeInterval? = nil
+    /// Input prompts stay until the agent answers, resumes or ends its turn.
+    var waitsForAgentInput = false
     /// A banner that replaces one still on screen keeps at least its wings,
     /// so a burst of messages does not resize the island with each one.
     var minimumWings = NotchNoticeWings.zero
@@ -1606,7 +1610,7 @@ final class NotchService: ObservableObject {
     private func releaseNotification() {
         guard let notice, notice.notificationID != nil else { return }
         if noticeExpanded { dismissNotice() }
-        else if noticeWork == nil { scheduleNoticeDismissal(after: notice.event.duration) }
+        else if noticeWork == nil { scheduleNoticeDismissal(after: notice.duration ?? notice.event.duration) }
     }
 
     private func syncNoticeWithPreferences() {
@@ -1617,8 +1621,12 @@ final class NotchService: ObservableObject {
     }
 
     private func scheduleNoticeDismissal(after duration: TimeInterval) {
-        noticeWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.dismissNotice() }
+        noticeWork?.cancel(); noticeWork = nil
+        guard notice?.waitsForAgentInput != true else { return }
+        let work = DispatchWorkItem { [weak self] in
+            self?.dismissNotice()
+            self?.restoreAgentInputNotice()
+        }
         noticeWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: work)
     }
@@ -2191,7 +2199,7 @@ final class NotchService: ObservableObject {
             inside = true
             holdNotification(id)
         } else {
-            scheduleNoticeDismissal(after: incoming.event.duration)
+            scheduleNoticeDismissal(after: incoming.duration ?? incoming.event.duration)
         }
         return true
     }
@@ -3854,6 +3862,10 @@ final class NotchService: ObservableObject {
             AgentUsageService.shared.events.receive(on: DispatchQueue.main)
                 .sink { [weak self] in self?.showAgentEvent($0) }
                 .store(in: &subscriptions)
+            AgentUsageService.shared.$snapshot.map(\.live).removeDuplicates()
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] in self?.syncAgentInputNotice($0) }
+                .store(in: &subscriptions)
         }
         stopPower()
         if NotchSupport.routes(.volume) {
@@ -3926,7 +3938,34 @@ final class NotchService: ObservableObject {
         case .budgetReached(let spent, _):
             show(NotchNotice(event: .agents, title: text.budgetTitle, detail: AgentFormat.cost(spent),
                              symbol: "dollarsign.circle.fill"))
+        case .inputRequired(let provider, let project, let prompt):
+            show(NotchNotice(event: .agents, title: text.inputRequired(provider.displayName),
+                             detail: prompt ?? (project.isEmpty ? text.actionRequired : project),
+                             symbol: "questionmark.bubble.fill", agent: provider, waitsForAgentInput: true))
         }
+    }
+
+    /// The live state releases answered prompts, including answers that do not
+    /// finish a task. Other notices keep their turn before a pending prompt returns.
+    private func syncAgentInputNotice(_ live: [AgentLiveSession]) {
+        let waiting = NotchAgentSupport.inputAlert() ? live.filter(\.isWaitingForInput) : []
+        if let shown = notice, shown.waitsForAgentInput {
+            let pending = waiting.first { $0.provider == shown.agent && $0.inputPrompt == shown.detail }
+                ?? waiting.first { $0.provider == shown.agent }
+            if let pending {
+                if let prompt = pending.inputPrompt, prompt != shown.detail {
+                    showAgentEvent(.inputRequired(provider: pending.provider, project: pending.project, prompt: prompt))
+                }
+                return
+            }
+            dismissNotice()
+        }
+        guard notice == nil, let pending = waiting.first else { return }
+        showAgentEvent(.inputRequired(provider: pending.provider, project: pending.project, prompt: pending.inputPrompt))
+    }
+
+    private func restoreAgentInputNotice() {
+        syncAgentInputNotice(AgentUsageService.shared.snapshot.live)
     }
 
     func showCurrentVolume() {

@@ -9,9 +9,9 @@ extension AgentProvider {
     var tint: Color {
         switch self {
         case .claude: return Color(red: 0.85, green: 0.47, blue: 0.34)
-        case .gemini: return Color(red: 0.35, green: 0.64, blue: 1.0)
+        case .gemini: return Color(red: 0.12, green: 0.64, blue: 0.98)
         case .agy: return Color(red: 0.73, green: 0.67, blue: 0.90)
-        case .codex: return Color(red: 0.49, green: 0.60, blue: 1.0)
+        case .codex: return Color(red: 0.53, green: 0.55, blue: 0.98)
         case .opencode: return Color(red: 0.06, green: 0.73, blue: 0.51)
         case .copilot: return Color(red: 0.30, green: 0.78, blue: 0.68)
         }
@@ -36,6 +36,7 @@ struct NotchAgentCardChrome<Content: View>: View {
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .modifier(NotchControlSurface(cornerRadius: 18, interactive: false))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 
@@ -148,12 +149,21 @@ struct NotchAgentGlyph: View {
     let provider: AgentProvider
     var size: CGFloat = 13
     var working = true
+    var needsInput = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        NotchAgentGlyphBridge(provider: provider, size: size, animates: working && !reduceMotion)
+        NotchAgentGlyphBridge(provider: provider, size: size, animates: working && !needsInput && !reduceMotion)
             // Room for the widest mark, the Claude one, drawn past its size.
             .frame(width: size * 1.45 + 1, height: size * 1.45 + 1)
+            .overlay(alignment: .topTrailing) {
+                if needsInput {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.system(size: max(6, size * 0.6), weight: .bold))
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.black, .orange)
+                }
+            }
             .accessibilityHidden(true)
             .allowsHitTesting(false)
     }

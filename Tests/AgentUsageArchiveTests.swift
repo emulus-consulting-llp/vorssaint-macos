@@ -299,14 +299,14 @@ enum AgentUsageArchiveTests {
             ("AgentLimits", labels(sampleLimits), ["provider", "windows", "observedAt", "source"]),
             ("AgentLimitWindow", labels(sampleWindow), ["id", "kind", "minutes", "scope", "usedPercent", "resetsAt", "estimatedResetsAt"]),
             ("AgentLiveSession", labels(sampleTurn),
-             ["id", "provider", "started", "lastActivity", "model", "project", "tokens", "cost"]),
+             ["id", "provider", "started", "lastActivity", "model", "project", "tokens", "cost", "isWaitingForInput", "inputPrompt"]),
             ("AgentLogCursor", labels(cursor),
              ["path", "provider", "tracksTurns", "parent", "openCode", "offset", "identity", "pending", "discarding",
               "state", "modified", "restarted", "fingerprinted"]),
             ("AgentLogCursor.Saved", labels(cursor.saved),
              ["path", "provider", "offset", "identity", "discarding", "modified", "state", "fingerprint"]),
             ("AgentLogState", labels(cursor.state),
-             ["session", "project", "model", "turnOpen", "sawUsageRecords", "lastTotal", "fast",
+             ["session", "project", "model", "turnOpen", "inputRequestedAt", "pendingQuestionIDs", "sawUsageRecords", "lastTotal", "fast",
               "copilotTotals", "copilotRequests", "copilotRequestModels", "copilotReportedRequests",
               "copilotTurnID", "copilotFinalResponse", "parentSession", "openCodeSessions", "runningCommands"])
         ]

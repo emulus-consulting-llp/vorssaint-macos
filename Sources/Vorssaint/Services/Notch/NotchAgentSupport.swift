@@ -56,6 +56,13 @@ struct NotchAgentTile: Identifiable, Equatable {
     var id: String { card.rawValue + (provider.map { "." + $0.rawValue } ?? "") }
 }
 
+struct NotchAgentStripReading: Identifiable, Equatable {
+    let provider: AgentProvider
+    let text: String
+    let needsInput: Bool
+    var id: AgentProvider { provider }
+}
+
 enum NotchAgentSupport {
     static let defaultFinishMinimum: TimeInterval = 60
     static let finishMinimums: [TimeInterval] = [0, 30, 60, 120, 300]
@@ -177,6 +184,11 @@ enum NotchAgentSupport {
         return value.isFinite ? min(3600, max(0, value)) : defaultFinishMinimum
     }
 
+    /// Whether a notice is shown when an agent needs user input.
+    static func inputAlert(in defaults: UserDefaults = .standard) -> Bool {
+        defaults.object(forKey: DefaultsKey.notchAgentsInputAlert) as? Bool ?? true
+    }
+
     /// Percent used that earns a warning; nil while warnings are off.
     static func limitThreshold(in defaults: UserDefaults = .standard) -> Double? {
         guard defaults.object(forKey: DefaultsKey.notchAgentsLimitAlert) as? Bool ?? true else { return nil }
@@ -198,32 +210,53 @@ enum NotchAgentSupport {
 
     /// A wing is never narrower than the music strip's, nor wide enough to
     /// crowd the menus beside the camera.
-    static let stripWingRange: ClosedRange<CGFloat> = 44...80
+    static let stripWingRange: ClosedRange<CGFloat> = 44...120
     /// Air between the camera and what sits beside it.
     static let stripCameraGap: CGFloat = 6
 
     static func stripTextSize(height: CGFloat) -> CGFloat { min(15, height - 7) }
 
-    /// What the strip shows beside the camera while agents work: the reading
-    /// the person chose, or the time elapsed while that one is unknown.
+    /// One reading per provider, in the same order as the marks. Multiple
+    /// sessions from a provider share its oldest timer and summed usage.
+    static func stripReadings(_ snapshot: AgentUsageSnapshot, readout: NotchAgentReadout,
+                              display: NotchAgentLimitDisplay, focus: NotchAgentLimitFocus = .mostUsed,
+                              now: Date) -> [NotchAgentStripReading] {
+        AgentProvider.allCases.compactMap { provider in
+            let live = snapshot.live.filter { $0.provider == provider }
+            guard !live.isEmpty else { return nil }
+            let needsInput = live.contains(where: \.isWaitingForInput)
+            let elapsed = AgentFormat.clock(now.timeIntervalSince(live.map(\.started).min() ?? now))
+            let text: String
+            if needsInput {
+                text = "Input"
+            } else {
+                switch readout {
+                case .elapsed: text = elapsed
+                case .tokens: text = AgentFormat.tokens(live.reduce(0) { $0 + $1.tokens.output })
+                case .cost: text = AgentFormat.cost(live.reduce(0) { $0 + $1.cost })
+                case .limit:
+                    if let window = focusedLimit(snapshot.limits[provider], focus: focus, now: now) {
+                        text = AgentFormat.percent(display == .used ? window.usedFraction : window.remainingFraction)
+                    } else {
+                        text = elapsed
+                    }
+                }
+            }
+            return NotchAgentStripReading(provider: provider, text: text, needsInput: needsInput)
+        }
+    }
+
+    /// The layout and accessibility reading matches the individually tinted
+    /// values drawn by the strip and capsule.
     static func stripReading(_ snapshot: AgentUsageSnapshot, readout: NotchAgentReadout,
                              display: NotchAgentLimitDisplay, focus: NotchAgentLimitFocus = .mostUsed,
                              now: Date) -> String {
-        let live = snapshot.live
-        func elapsed() -> String { AgentFormat.clock(now.timeIntervalSince(live.map(\.started).min() ?? now)) }
+        let readings = stripReadings(snapshot, readout: readout, display: display, focus: focus, now: now)
+        if !readings.isEmpty { return readings.map(\.text).joined(separator: " · ") }
         switch readout {
-        case .elapsed:
-            return elapsed()
-        case .tokens:
-            // What the agent wrote, the count its own window shows; the
-            // context it reads again on every call is in the cost.
-            return AgentFormat.tokens(live.reduce(0) { $0 + $1.tokens.output })
-        case .cost:
-            return AgentFormat.cost(live.reduce(0) { $0 + $1.cost })
-        case .limit:
-            guard let provider = AgentProvider.allCases.first(where: { provider in live.contains { $0.provider == provider } }),
-                  let window = focusedLimit(snapshot.limits[provider], focus: focus, now: now) else { return elapsed() }
-            return AgentFormat.percent(display == .used ? window.usedFraction : window.remainingFraction)
+        case .elapsed, .limit: return AgentFormat.clock(0)
+        case .tokens: return AgentFormat.tokens(0)
+        case .cost: return AgentFormat.cost(0)
         }
     }
 
