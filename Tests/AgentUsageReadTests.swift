@@ -77,6 +77,7 @@ enum AgentUsageReadTests {
         var savedMark: Int?
         var codexBudget = AgentCodexSessionBudget()
         var savedCodexBudget: AgentCodexSessionBudget?
+        var initialCodexReadings: [AgentLimits]?
         var progressMark: Int { 0 }
         func saveProgress() {}
         func startTimer() {}
@@ -201,6 +202,7 @@ enum AgentUsageReadTests {
             suite.expect(!host.read(file.path, provider: provider), "a cancelled reading consumes no more entries")
         }
         startup(suite, folder: folder.appending(path: "home"), cases: cases)
+        budgetStartup(suite, folder: folder.appending(path: "budget-home"))
 
         let openFile = folder.appending(path: "copilot-open.jsonl")
         let openLines = [
@@ -253,6 +255,31 @@ enum AgentUsageReadTests {
         watcher.filesChanged([], rescan: true)
         suite.expect(Set(watcher.cursors.keys) == [real.path] && watcher.store.records.count == 1,
                      "Copilot rescans use the same path boundary and do not duplicate live activity")
+    }
+
+    private static func budgetStartup(_ suite: TestSuite, folder: URL) {
+        let start = Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded(.down) - 6 * 3600)
+        let root = folder.appending(path: ".codex/sessions")
+        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        func reading(_ used: Int, _ seconds: Double) -> String {
+            #"{"type":"event_msg","timestamp":\#(start.addingTimeInterval(seconds).timeIntervalSince1970),"payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":\#(used),"window_minutes":10080,"resets_at":\#(start.addingTimeInterval(7 * 86400).timeIntervalSince1970)}}}}"#
+        }
+        let a = root.appending(path: "a.jsonl"), b = root.appending(path: "b.jsonl")
+        try? Data(([reading(0, 0), reading(7, 5 * 3600 + 180)].joined(separator: "\n") + "\n").utf8).write(to: a)
+        try? Data(([reading(2, 60), reading(4, 5 * 3600 + 120)].joined(separator: "\n") + "\n").utf8).write(to: b)
+        var budgets: [AgentCodexSessionBudget] = []
+        for reverse in [false, true] {
+            try? FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(reverse ? 0 : -10)], ofItemAtPath: a.path)
+            try? FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(reverse ? -10 : 0)], ofItemAtPath: b.path)
+            let host = Host()
+            host.home = folder
+            host.start(session: 1, providers: [.codex], cancellation: Cancellation())
+            budgets.append(host.codexBudget)
+            suite.expect(host.initialCodexReadings == nil && host.codexBudget.window(now: Date()).usedPercent == 50
+                            && host.codexBudget.startedAt == start.addingTimeInterval(5 * 3600 + 120),
+                         "production startup replays quotas globally before showing the five-hour budget")
+        }
+        suite.expect(budgets.first == budgets.last, "swapping Codex file modification order cannot change the initial budget")
     }
 
     private static func startup(_ suite: TestSuite, folder: URL, cases: [(AgentProvider, [String])]) {

@@ -238,7 +238,7 @@ enum NotchAgentSupport {
                     if let window = focusedLimit(snapshot.limits[provider], focus: focus, now: now) {
                         text = AgentFormat.percent(display == .used ? window.usedFraction : window.remainingFraction)
                     } else {
-                        text = elapsed
+                        text = provider == .claude ? "—" : elapsed
                     }
                 }
             }

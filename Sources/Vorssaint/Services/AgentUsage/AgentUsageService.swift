@@ -99,8 +99,12 @@ final class AgentUsageService: ObservableObject {
     private var claudeAppSamples: [AgentClaudeAppUsage.Sample] = []
     private var claudeStatusLineModified: Date?
     private var claudeStatusLineData: Data?
+    /// The hook has no account ID, so pre-switch observations cannot be reused.
+    private var claudeStatusLineNotBefore: Date?
     private var codexBudget = AgentCodexSessionBudget()
     private var savedCodexBudget: AgentCodexSessionBudget?
+    /// Startup spans overlapping logs; replay their quota observations together.
+    private var initialCodexReadings: [AgentLimits]?
     private var shippedPrices: AgentPriceList?
     private var previousLimits: [AgentProvider: AgentLimits] = [:]
     /// Warned windows, each waiting for its renewal.
@@ -208,8 +212,10 @@ final class AgentUsageService: ObservableObject {
             claudeAppSamples = []
             claudeStatusLineModified = nil
             claudeStatusLineData = nil
+            claudeStatusLineNotBefore = nil
             codexBudget = AgentCodexSessionBudget()
             savedCodexBudget = nil
+            initialCodexReadings = nil
             savedMark = nil
             lastSave = .distantPast
         }
@@ -319,12 +325,15 @@ final class AgentUsageService: ObservableObject {
                 // What the resume took back leaves the disk at the next save.
                 if resumed.unchanged { savedMark = progressMark }
             }
+            initialCodexReadings = []
             for file in files {
                 // A stop while reading leaves the rest for the next start.
                 guard !cancellation.isCancelled else { return }
                 read(file.path, provider: file.provider)
             }
             guard !cancellation.isCancelled else { return }
+            codexBudget.observeHistory(initialCodexReadings ?? [])
+            initialCodexReadings = nil
             let now = Date()
             // A turn left open by a crash would otherwise stay working.
             store.closeIdleTurns(now: now, after: NotchAgentSupport.idleTurn)
@@ -539,7 +548,10 @@ final class AgentUsageService: ObservableObject {
             guard !entries.isEmpty else { return }
             changed = true
             if provider == .codex {
-                for case .limits(let reading) in entries { codexBudget.observe(reading) }
+                for case .limits(let reading) in entries {
+                    if initialCodexReadings != nil { initialCodexReadings?.append(reading) }
+                    else { codexBudget.observe(reading) }
+                }
             }
             let isSubagent = provider == .opencode && !cursor.state.parentSession.isEmpty
             let turnFile = provider == .opencode && !cursor.state.session.isEmpty ? "\(path)#\(cursor.state.session)" : path
@@ -772,19 +784,31 @@ final class AgentUsageService: ObservableObject {
         guard enabled.contains(.claude) else { return }
         let url = home.appending(path: ".claude.json")
         let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-        guard modified != claudeProfileModified else { return }
+        guard modified != claudeProfileModified || claudeStatusLineNotBefore == nil else { return }
         claudeProfileModified = modified
         guard let data = try? Data(contentsOf: url, options: .mappedIfSafe),
               let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let account = json["oauthAccount"] as? [String: Any] else {
             claudePlan = nil
-            claudeOrganization = nil
+            selectClaudeOrganization(nil, changedAt: modified ?? Date())
             return
         }
-        claudeOrganization = account["organizationUuid"] as? String
+        selectClaudeOrganization(account["organizationUuid"] as? String, changedAt: modified ?? Date())
         claudePlan = AgentPlans.claude(organizationType: account["organizationType"] as? String,
                                        rateLimitTier: account["organizationRateLimitTier"] as? String
                                         ?? account["userRateLimitTier"] as? String)
+    }
+
+    /// Retained quotas and alerts belong to the account that supplied them.
+    private func selectClaudeOrganization(_ organization: String?, changedAt: Date) {
+        guard organization != claudeOrganization || claudeStatusLineNotBefore == nil else { return }
+        claudeOrganization = organization
+        claudeStatusLineNotBefore = changedAt
+        store.clearLimits(.claude)
+        previousLimits[.claude] = nil
+        warned = warned.filter { $0.value.provider != .claude }
+        claudeStatusLineModified = nil
+        claudeStatusLineData = nil
     }
 
     /// Reads the limits the Claude app saved when the file changes, and
@@ -797,6 +821,13 @@ final class AgentUsageService: ObservableObject {
             claudeAppSamples = []
             claudeStatusLineModified = nil
             claudeStatusLineData = nil
+            return
+        }
+        // A page refresh must notice an account switch without waiting for
+        // the less frequent profile poll. With no account, ownership is unknown.
+        readClaudePlan()
+        guard claudeOrganization != nil else {
+            store.clearLimits(.claude)
             return
         }
         let url = AgentClaudeAppUsage.historyURL(home: home)
@@ -820,7 +851,9 @@ final class AgentUsageService: ObservableObject {
             claudeStatusLineData = statusModified == nil ? nil : try? Data(contentsOf: statusURL)
         }
         let statusLine = claudeStatusLineData.flatMap { AgentClaudeStatusLineUsage.limits(from: $0, now: now) }
-        let newest = [app, statusLine].compactMap { $0 }.max { $0.observedAt < $1.observedAt }
+        let newest = AgentClaudeStatusLineUsage.latest(app: app, statusLine: statusLine,
+                                                       previous: store.limits[.claude], now: now,
+                                                       statusLineNotBefore: claudeStatusLineNotBefore)
         if let limits = newest {
             store.setLimits(limits)
         } else if store.limits[.claude]?.source == .claudeApp {

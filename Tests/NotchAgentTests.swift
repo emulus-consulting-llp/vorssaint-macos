@@ -41,6 +41,7 @@ enum NotchAgentTests {
         AgentProviderInputLogTests.run(suite)
         AgentPersistentInputTests.run(suite)
         AgentCodexInputHookTests.run(suite)
+        AgentClaudeAccountTests.run(suite)
         preferences(suite)
         agentDefaults(suite)
         formatting(suite)
@@ -2524,8 +2525,8 @@ enum NotchAgentTests {
                                limits: [.claude: AgentLimits(provider: .claude, windows: [window], observedAt: now, source: .claudeApp)])
         suite.expect(NotchAgentSupport.stripReading(limited, readout: .limit, display: .remaining, now: now) == AgentFormat.percent(0.21)
                         && NotchAgentSupport.stripReading(limited, readout: .limit, display: .used, now: now) == AgentFormat.percent(0.79)
-                        && NotchAgentSupport.stripReading(short, readout: .limit, display: .remaining, now: now) == "12:34",
-                     "a limit reads as left or used, and falls back to the time while none is known")
+                        && NotchAgentSupport.stripReading(short, readout: .limit, display: .remaining, now: now) == "—",
+                     "a limit reads as left or used, and Claude shows unknown while none is reported")
         let mixed = snapshot([session(.codex, startedAgo: 60), session(.claude, startedAgo: 754)], limits: limited.limits)
         suite.expect(NotchAgentSupport.stripReading(mixed, readout: .limit, display: .remaining, now: now)
                         == "\(AgentFormat.percent(0.21)) · 1:00",

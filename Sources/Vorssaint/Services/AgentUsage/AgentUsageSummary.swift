@@ -408,7 +408,10 @@ enum AgentLimitSupport {
     static func displayWindows(_ limits: AgentLimits?, now: Date) -> [AgentLimitWindow] {
         guard let limits else { return [] }
         if limits.source == .account {
-            return limits.windows.filter { ($0.resetsAt ?? .distantPast) > now }
+            return limits.windows.filter {
+                (limits.provider == .codex && $0.id == AgentCodexSessionBudget.windowID)
+                    || ($0.resetsAt ?? .distantPast) > now
+            }.map { current($0, at: now) }
         }
         return limits.windows.map { current($0, at: now) }
     }

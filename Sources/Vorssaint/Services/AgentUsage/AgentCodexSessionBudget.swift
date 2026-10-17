@@ -21,6 +21,16 @@ struct AgentCodexSessionBudget: Codable, Equatable {
     private var lastWeeklyPercent: Double?
     private var lastWeeklyReset: Date?
 
+    /// File modification order cannot establish five-hour session boundaries.
+    /// Saved progress still wins over older history through observe's guard.
+    mutating func observeHistory(_ readings: [AgentLimits]) {
+        for reading in readings.sorted(by: {
+            if $0.observedAt != $1.observedAt { return $0.observedAt < $1.observedAt }
+            return ($0.windows.first { $0.kind == .weekly }?.usedPercent ?? 0)
+                > ($1.windows.first { $0.kind == .weekly }?.usedPercent ?? 0)
+        }) { observe(reading) }
+    }
+
     /// Takes in a reading of the account, at the time it was made. Readings
     /// older than the last one taken add nothing: logs are not read in time
     /// order, and what an older reading spent is counted by the next newer one.
@@ -66,7 +76,7 @@ struct AgentCodexSessionBudget: Codable, Equatable {
     /// Codex's own limits with the session budget in front, when the plan
     /// reports a week and no session of its own.
     func adding(to limits: AgentLimits?, now: Date) -> AgentLimits? {
-        guard var limits, limits.provider == .codex, lastObserved != nil,
+        guard var limits, limits.provider == .codex,
               limits.windows.contains(where: { $0.kind == .weekly }),
               !limits.windows.contains(where: { $0.kind == .session }) else { return limits }
         limits.windows.insert(window(now: now), at: 0)

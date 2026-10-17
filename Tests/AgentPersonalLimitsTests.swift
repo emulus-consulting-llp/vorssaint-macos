@@ -46,6 +46,22 @@ enum AgentPersonalLimitsTests {
                                                                     "five_hour": ["used_percentage": 140, "resets_at": fetched + 600]]),
                                                        now: now)?.windows.first?.usedPercent == 100,
                      "overage is clamped to a full window")
+
+        let retained = AgentClaudeStatusLineUsage.latest(app: nil, statusLine: nil, previous: limits, now: now)
+        suite.expect(retained == limits, "a hook render without limits preserves the last known Claude quota")
+        suite.expect(AgentClaudeStatusLineUsage.latest(app: nil, statusLine: nil, previous: limits,
+                                                     now: later)?.windows.map(\.kind) == [.weekly],
+                     "retained Claude readings remove a session that has renewed")
+        suite.expect(AgentClaudeStatusLineUsage.latest(app: nil, statusLine: nil, previous: limits,
+                                                     now: now.addingTimeInterval(2 * 86_400))?.windows.isEmpty == true,
+                     "retained Claude readings keep pending rows after both windows renew")
+        suite.expect(AgentClaudeStatusLineUsage.latest(app: nil, statusLine: nil, previous: limits,
+                                                     now: now.addingTimeInterval(7 * 86_400)) == nil,
+                     "retained Claude readings expire after a week")
+        let fresh = AgentClaudeStatusLineUsage.limits(from: cache(["fetched_at": fetched + 60,
+            "five_hour": ["used_percentage": 98, "resets_at": fetched + 3600]]), now: now)
+        suite.expect(AgentClaudeStatusLineUsage.latest(app: limits, statusLine: fresh, previous: retained, now: now) == fresh,
+                     "a newer Claude reading replaces the retained quota")
     }
 
     private static func codexBudget(_ suite: TestSuite) {
@@ -107,11 +123,34 @@ enum AgentPersonalLimitsTests {
         suite.expect(shown?.windows.map(\.id) == [AgentCodexSessionBudget.windowID, "codex.10080"],
                      "a week-only plan gains the budget as its session")
         suite.expect(budget.adding(to: reading(31, at: 0, session: true), now: start)?.windows.count == 2
-                     && AgentCodexSessionBudget().adding(to: reading(31, at: 0), now: start)?.windows.count == 1,
-                     "a plan with its own session, or a budget never fed, is left alone")
+                     && AgentCodexSessionBudget().adding(to: reading(31, at: 0), now: start)?.windows.count == 2,
+                     "a week-only Codex plan always shows its personal session, while a native session is left alone")
+        let weekOnly = reading(31, at: 0)
+        let account = AgentLimits(provider: .codex, windows: weekOnly.windows, observedAt: start, source: .account)
+        let idleBudget = AgentCodexSessionBudget().adding(to: account, now: start)
+        suite.expect(AgentLimitSupport.displayWindows(idleBudget, now: start).map(\.kind) == [.session, .weekly]
+                        && AgentLimitSupport.displayWindows(idleBudget, now: start).first?.usedPercent == 0,
+                     "an account refresh cannot hide an idle personal session that has no reset time")
+        let activeBudget = budget.adding(to: account, now: start.addingTimeInterval(6 * 3600))
+        suite.expect(AgentLimitSupport.displayWindows(activeBudget, now: start.addingTimeInterval(12 * 3600)).map(\.kind)
+                        == [.session, .weekly],
+                     "the personal session row stays visible after its five-hour reset")
 
         let encoded = try? JSONEncoder().encode(budget)
         suite.expect(encoded.flatMap { try? JSONDecoder().decode(AgentCodexSessionBudget.self, from: $0) } == budget,
                      "the budget survives a relaunch")
+
+        let history = [reading(0, at: 0), reading(2, at: 60), reading(4, at: 5 * 3600 + 120), reading(7, at: 5 * 3600 + 180)]
+        var ordered = AgentCodexSessionBudget()
+        ordered.observeHistory(history)
+        for shuffled in [Array(history.reversed()), [history[0], history[3], history[1], history[2]]] {
+            var replay = AgentCodexSessionBudget()
+            replay.observeHistory(shuffled)
+            suite.expect(replay == ordered && replay.window(now: start.addingTimeInterval(5 * 3600 + 180)).usedPercent == 50,
+                         "overlapping Codex histories produce the same budget and reset regardless of file order")
+        }
+        let savedReplay = ordered
+        ordered.observeHistory(history)
+        suite.expect(ordered == savedReplay, "initial replay does not count observations already in the saved budget twice")
     }
 }

@@ -178,7 +178,7 @@ private struct NotchAgentLimitsCard: View {
                         Text(quotaState == .loading ? text.loading :
                             snapshot.limits[provider] == nil ? quotaText.unavailable : quotaText.waiting)
                             .font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(2)
-                    } else { estimate }
+                    } else { activitySummary }
                 } else {
                     VStack(spacing: 5) {
                         if pending.contains(.session) { pendingRow(.session) }
@@ -263,11 +263,10 @@ private struct NotchAgentLimitsCard: View {
         .help(help(window))
     }
 
-    /// Claude keeps a row for its session and its week while a reading says
-    /// the plan has them: a window that renewed after the last reading has
-    /// spent an unknown amount since, so its row waits for the next one.
+    /// Claude always keeps its Session and Week rows. Missing or expired
+    /// readings show unknown values without changing the card's layout.
     private var pending: [AgentLimitWindow.Kind] {
-        guard provider == .claude, snapshot.limits[provider] != nil else { return [] }
+        guard provider == .claude else { return [] }
         let windows = windows
         var kinds: [AgentLimitWindow.Kind] = []
         if !windows.contains(where: { $0.kind == .session }) { kinds.append(.session) }
@@ -275,14 +274,8 @@ private struct NotchAgentLimitsCard: View {
         return kinds
     }
 
-    /// A window's place until the next reading. A session is timed by Claude
-    /// Code's own first request when this Mac saw one.
+    /// A window's place until the next reported quota reading.
     private func pendingRow(_ kind: AgentLimitWindow.Kind) -> some View {
-        let block = kind == .session ? snapshot.claudeBlock.flatMap { $0.end > now ? $0 : nil } : nil
-        let elapsed = block.map { block -> Double in
-            let length = block.end.timeIntervalSince(block.start)
-            return length > 0 ? now.timeIntervalSince(block.start) / length : 0
-        }
         return VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 5) {
                 Text(kind == .session ? text.session : text.weekly)
@@ -290,25 +283,17 @@ private struct NotchAgentLimitsCard: View {
                     .foregroundStyle(.white.opacity(0.85))
                     .lineLimit(1)
                     .layoutPriority(1)
-                Group {
-                    if let block {
-                        Label(countdown(to: block.end), systemImage: "arrow.clockwise")
-                            .labelStyle(NotchAgentInlineLabel())
-                    } else {
-                        Text(quotaText.waiting)
-                    }
-                }
-                .font(.system(size: 9.5))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                Text(quotaText.waiting)
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 Spacer(minLength: 2)
                 Text("—")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
             }
-            NotchAgentMeter(value: 0, pace: elapsed.map { display == .remaining ? 1 - $0 : $0 },
-                            tint: provider.tint, height: 4, dimmed: true)
+            NotchAgentMeter(value: 0, tint: provider.tint, height: 4, dimmed: true)
         }
         .help(pendingHelp)
     }
@@ -352,34 +337,9 @@ private struct NotchAgentLimitsCard: View {
         return parts.joined(separator: " · ")
     }
 
-    /// Without a recent reading from the Claude app, the session still ends
-    /// five hours after its first request, so the window itself is known.
-    @ViewBuilder private var estimate: some View {
-        if provider == .claude, let block = snapshot.claudeBlock {
-            let length = block.end.timeIntervalSince(block.start)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 5) {
-                    Text(text.session)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.85))
-                    Label(countdown(to: block.end), systemImage: "arrow.clockwise")
-                        .labelStyle(NotchAgentInlineLabel())
-                        .font(.system(size: 9.5))
-                        .foregroundStyle(.secondary)
-                    Spacer(minLength: 2)
-                    Text(AgentFormat.cost(block.totals.cost))
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .monospacedDigit()
-                }
-                NotchAgentMeter(value: length > 0 ? now.timeIntervalSince(block.start) / length : 0,
-                                tint: provider.tint, height: 4, dimmed: true)
-            }
-            .help(text.estimated)
-            setUpLimits
-        } else if provider == .claude {
-            Text(text.noSession).font(.system(size: 10.5)).foregroundStyle(.secondary)
-            setUpLimits
-        } else if provider == .opencode {
+    /// Providers without quota data show availability or their own activity summary.
+    @ViewBuilder private var activitySummary: some View {
+        if provider == .opencode {
             let todayUsage = snapshot.usage(.today).byProvider[.opencode]
             if let todayUsage, todayUsage.tokens.total > 0 || todayUsage.requests > 0 || todayUsage.cost > 0 {
                 let costText: String = {
@@ -420,22 +380,6 @@ private struct NotchAgentLimitsCard: View {
             Text(text.waitingForLimits).font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(2)
             lastUsed
         }
-    }
-
-    /// Claude's plan limits come from the Claude app; the settings say how.
-    private var setUpLimits: some View {
-        Button {
-            NotchService.shared.openSettings(showing: .agents)
-        } label: {
-            Label(text.claudeLimitsHint, systemImage: "arrow.up.forward")
-                .labelStyle(NotchAgentInlineLabel())
-                .font(.system(size: 9.5, weight: .medium))
-                .foregroundStyle(provider.tint)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 
     @ViewBuilder private var lastUsed: some View {

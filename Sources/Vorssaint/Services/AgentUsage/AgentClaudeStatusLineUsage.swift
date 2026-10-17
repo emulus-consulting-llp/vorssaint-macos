@@ -49,6 +49,33 @@ enum AgentClaudeStatusLineUsage {
         return AgentLimits(provider: .claude, windows: result, observedAt: observed, source: .claudeApp)
     }
 
+    /// A hook render can omit limits entirely. Keep the last usable reading
+    /// until a newer one arrives, aging out its windows at their renewals.
+    static func latest(app: AgentLimits?, statusLine: AgentLimits?, previous: AgentLimits?, now: Date,
+                       statusLineNotBefore: Date? = nil) -> AgentLimits? {
+        let statusLine = statusLine.flatMap { reading -> AgentLimits? in
+            guard statusLineNotBefore.map({ reading.observedAt >= $0 }) ?? true else { return nil }
+            return reading
+        }
+        var retained = previous
+        if let value = retained {
+            if value.provider != .claude || value.source != .claudeApp
+                || now.timeIntervalSince(value.observedAt) >= 7 * 86_400 {
+                retained = nil
+            } else {
+                retained?.windows = value.windows.filter {
+                    $0.resetsAt.map { $0 > now } ?? (now.timeIntervalSince(value.observedAt) < 86_400)
+                }
+            }
+        }
+        // Prefer a newly read value when its observation time matches the
+        // retained one, as an expired window may have been removed from it.
+        return [retained, app, statusLine].compactMap { $0 }.reduce(nil) { latest, reading in
+            guard let latest else { return reading }
+            return reading.observedAt >= latest.observedAt ? reading : latest
+        }
+    }
+
     private static func number(_ value: Any?) -> Double? {
         guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(),
               number.doubleValue.isFinite else { return nil }

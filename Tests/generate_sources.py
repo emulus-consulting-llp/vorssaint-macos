@@ -1881,6 +1881,14 @@ def main():
                                    "    private func readCodexInput("])
           + "}\n}\n")
 
+    write("AgentClaudeAccount.swift", "import Foundation\n"
+          + "extension AgentClaudeAccountTests {\nfinal class Host: Fixture {\n"
+          + "".join(declaration("Sources/Vorssaint/Services/AgentUsage/AgentUsageService.swift", prefix)
+                    .replace("private func", "func", 1) for prefix in [
+                        "    private func readClaudePlan(", "    private func selectClaudeOrganization(",
+                        "    private func readClaudeApp("])
+          + "}\n}\n")
+
     write("AgentUsagePolling.swift", "import Foundation\n"
           + "extension AgentUsagePollingTests {\nfinal class Host: Fixture {\n"
           + declaration("Sources/Vorssaint/Services/AgentUsage/AgentUsageService.swift",
