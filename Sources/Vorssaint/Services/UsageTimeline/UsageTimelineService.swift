@@ -12,6 +12,7 @@ struct UsageTimelinePreferences: Equatable {
     var titles: Bool
     var paths: Bool
     var excluded: Set<String>
+    var feed: Bool
 
     init(defaults: UserDefaults = .standard) {
         enabled = defaults.bool(forKey: DefaultsKey.usageTimelineEnabled)
@@ -21,6 +22,7 @@ struct UsageTimelinePreferences: Equatable {
         titles = defaults.bool(forKey: DefaultsKey.usageTimelineTitles)
         paths = defaults.bool(forKey: DefaultsKey.usageTimelinePaths)
         excluded = Set(defaults.stringArray(forKey: DefaultsKey.usageTimelineExcludedApps) ?? [])
+        feed = defaults.bool(forKey: DefaultsKey.usageTimelineFeed)
     }
 }
 
@@ -40,6 +42,8 @@ final class UsageTimelineService: ObservableObject {
     @Published private(set) var hasError = false
     @Published private(set) var appOnly = false
     @Published private(set) var revision = 0
+    @Published private(set) var feedUpdated: Date?
+    @Published private(set) var feedFailed = false
 
     private let worker = DispatchQueue(label: "Vorssaint.UsageTimeline", qos: .utility)
     private let gate = UsageObservationGate()
@@ -54,6 +58,8 @@ final class UsageTimelineService: ObservableObject {
     private var failed = false
     private var lastCheckpoint: TimeInterval = 0
     private var lastMetadata: TimeInterval = 0
+    private let feedPublisher = ActivityFeedPublisher()
+    private var feedEnabled = false
     // Main-thread state.
     private var preferences: UsageTimelinePreferences?
     private var conditions = UsageConditions()
@@ -87,13 +93,19 @@ final class UsageTimelineService: ObservableObject {
                                                 wasEnabled: wasEnabled, wasPaused: wasPaused)
         if enabled && !paused && !hasError { installObservers() }
         let shouldRun = enabled
+        let feed = next.feed
         let moment = UsageMoment.now
         let initial = conditions
         worker.async {
             self.collector.stop()
+            if feed != self.feedEnabled {
+                self.feedEnabled = feed
+                if feed { self.feedPublisher.invalidateAll() } else { self.feedPublisher.mark(state: "off") }
+            }
             if !shouldRun {
                 self.persist(at: moment)
                 self.reducer = nil
+                self.publishFeed(at: moment, force: true)
                 self.publishState(.unrecorded)
                 return
             }
@@ -124,6 +136,14 @@ final class UsageTimelineService: ObservableObject {
     func setPaused(_ value: Bool) {
         UserDefaults.standard.set(value, forKey: DefaultsKey.usageTimelinePaused)
         syncWithPreferences()
+    }
+
+    /// Rewrites the whole public feed from history.
+    func rebuildFeed() {
+        worker.async {
+            self.feedPublisher.invalidateAll()
+            self.publishFeed(at: .now, force: true)
+        }
     }
 
     func retry() {
@@ -175,10 +195,12 @@ final class UsageTimelineService: ObservableObject {
                 try self.openStore()
                 try self.store!.delete(in: range)
                 self.failed = false
+                if let range { self.feedPublisher.invalidate(range) } else { self.feedPublisher.invalidateAll() }
                 if resume {
                     self.reducer = UsageReducer(at: .now, conditions: initial)
                     self.persist(at: .now)
                 }
+                self.publishFeed(at: .now, force: true)
                 DispatchQueue.main.async {
                     self.hasError = false
                     self.revision += 1
@@ -203,6 +225,7 @@ final class UsageTimelineService: ObservableObject {
             collector.stop()
             persist(at: moment)
             reducer = nil
+            publishFeed(at: moment, force: true)
         }
     }
 
@@ -293,15 +316,21 @@ final class UsageTimelineService: ObservableObject {
                 self.lastMetadata = moment.uptime
                 self.collector.read(app: app, titles: preferences.titles, paths: preferences.paths, generation: token, at: moment)
             }
-            if oldState != currentFlags.presence || moment.uptime - self.lastCheckpoint >= 15 { self.persist(at: .now) }
+            // The feed is refreshed from this steady sampling, never from a
+            // focus change, whose new visit is still zero-length.
+            let feedDue = self.feedEnabled && self.feedPublisher.isDue(at: moment)
+            if oldState != currentFlags.presence || moment.uptime - self.lastCheckpoint >= 15 || feedDue {
+                self.persist(at: .now)
+            }
         }
     }
 
     private func receive(_ focus: UsageForeground?, at moment: UsageMoment) {
         guard !failed, reducer?.conditions.canReadMetadata == true else { return }
-        let previous = reducer?.foreground?.foreground
+        let previous = reducer?.foreground?.id
         reducer?.observe(focus, at: moment)
-        if previous != focus { persist(at: moment) }
+        // A transient title replaced in place waits for the next checkpoint.
+        if reducer?.foreground?.id != previous { persist(at: moment, publish: false) }
     }
 
     private func openStore() throws {
@@ -310,7 +339,7 @@ final class UsageTimelineService: ObservableObject {
         store = try UsageTimelineStore(url: root.appendingPathComponent("UsageTimeline/history.sqlite"))
     }
 
-    private func persist(at moment: UsageMoment) {
+    private func persist(at moment: UsageMoment, publish: Bool = true) {
         guard !failed, var reducer else { return }
         let intervals = reducer.checkpoint(at: moment)
         self.reducer = reducer
@@ -319,7 +348,26 @@ final class UsageTimelineService: ObservableObject {
             try store!.save(intervals, session: reducer.sessionID, checkpoint: moment.date)
             lastCheckpoint = moment.uptime
             DispatchQueue.main.async { self.revision += 1 }
-        } catch { fail() }
+        } catch { fail(); return }
+        if publish { publishFeed(at: moment) }
+    }
+
+    /// Worker only. Open rows are the live intervals; with no reducer the
+    /// feed reports tracking as off.
+    private func publishFeed(at moment: UsageMoment, force: Bool = false) {
+        guard feedEnabled, (try? openStore()) != nil, let store else { return }
+        var open = Set<UUID>()
+        if let reducer {
+            open.insert(reducer.presence.id)
+            if let foreground = reducer.foreground { open.insert(foreground.id) }
+        }
+        let state = reducer?.conditions.presence.rawValue ?? "off"
+        let outcome = feedPublisher.publish(history: store, open: open, state: state, at: moment, force: force)
+        guard outcome != .skipped else { return }
+        DispatchQueue.main.async {
+            self.feedFailed = outcome == .failed
+            if outcome == .published { self.feedUpdated = moment.date }
+        }
     }
 
     private func publishState(_ value: UsagePresence) {
@@ -330,6 +378,7 @@ final class UsageTimelineService: ObservableObject {
         failed = true
         collector.stop()
         reducer = nil
+        if feedEnabled { feedPublisher.mark(state: "error") }
         DispatchQueue.main.async {
             self.hasError = true
             self.removeObservers()

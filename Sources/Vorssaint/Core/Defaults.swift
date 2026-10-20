@@ -324,6 +324,7 @@ enum DefaultsKey {
     static let usageTimelineTitles = "usageTimelineTitles"
     static let usageTimelinePaths = "usageTimelinePaths"
     static let usageTimelineExcludedApps = "usageTimelineExcludedApps"
+    static let usageTimelineFeed = "usageTimelineFeed"
     static let appUpdatesIncludeHomebrewApps = "appUpdatesIncludeHomebrewApps"
     static let appUpdatesIncludeAppStore = "appUpdatesIncludeAppStore"
     static let appUpdatesIncludeOnlineCatalog = "appUpdatesIncludeOnlineCatalog"
@@ -1579,6 +1580,7 @@ enum Defaults {
         DefaultsKey.usageTimelineTitles: true,
         DefaultsKey.usageTimelinePaths: true,
         DefaultsKey.usageTimelineExcludedApps: [String](),
+        DefaultsKey.usageTimelineFeed: false,
         DefaultsKey.appUpdatesIncludeHomebrewApps: true,
         DefaultsKey.appUpdatesIncludeAppStore: true,
         DefaultsKey.appUpdatesIncludeOnlineCatalog: true,

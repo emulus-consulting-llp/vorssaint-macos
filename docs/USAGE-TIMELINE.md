@@ -46,8 +46,16 @@ its most recent checkpoint (normally within 15 seconds); downtime is unrecorded,
 not charged to the last app. A storage error stops collection and displays Retry.
 Existing data is preserved, including databases with an unsupported schema.
 
-External data consumption, exports, cloud sync, website URLs, screenshots, and
-background-window inventories are outside this version.
+Window titles held for less than three seconds (spinners, progress counters,
+terminal status lines) do not start a new visit: the open visit takes the newer
+title. A different window or document always starts a new visit.
+
+## Activity feed
+
+Other apps on this Mac, such as Kaizen, can read active usage through the opt-in
+[activity feed](ACTIVITY-FEED.md), a separate derived database. It never exposes
+or locks the private history above. Exports, cloud sync, website URLs,
+screenshots, and background-window inventories remain outside this version.
 
 ## Implementation validation
 

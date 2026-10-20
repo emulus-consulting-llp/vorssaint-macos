@@ -258,6 +258,9 @@ if (( TEST )); then
         Sources/Vorssaint/Services/UsageTimeline/UsageTimelineModels.swift
         Sources/Vorssaint/Services/UsageTimeline/UsageFocusSupport.swift
         Sources/Vorssaint/Services/UsageTimeline/UsageTimelineStore.swift
+        Sources/Vorssaint/Services/ActivityFeed/ActivityFeedModels.swift
+        Sources/Vorssaint/Services/ActivityFeed/ActivityFeedStore.swift
+        Sources/Vorssaint/Services/ActivityFeed/ActivityFeedPublisher.swift
         Sources/Vorssaint/Core/UsageTimelineStrings.swift
         Sources/Vorssaint/Services/Media/MediaSupport.swift
         Sources/Vorssaint/Core/QuitProtectionSupport.swift

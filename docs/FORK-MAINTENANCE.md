@@ -191,7 +191,7 @@ Run at least these checks for application updates, plus suites affected by the
 upstream patch (use the full suite for broad changes):
 
 ```sh
-./build.sh --test-suite=agents --test-suite=usage-timeline
+./build.sh --test-suite=agents --test-suite=usage-timeline --test-suite=activity-feed
 python3 Tests/CodexInputHookTests.py
 ./build.sh --dev
 ./build/VorssaintDeveloper --selftest
@@ -239,6 +239,7 @@ in `MetricsTests.swift`, `generate_sources.py`, and `build.sh` must also survive
 | Codex approval hook | Keep the optional metadata-only bridge, request/result correlation, expiry and existing-hook preservation. It must not grant approval. Fixture success does not prove live PermissionRequest delivery. | `AgentCodexInputHookTests.swift`, `CodexInputHookTests.py`, `Tools/codex-input-hook.py`; explicit live verification if available. |
 | Provider display | Keep stable per-provider timers/readouts, provider colors, orange Input badges, and sufficient strip/capsule width. The Now logo row remains idle-only. | `NotchAgentSupport.swift`, `NotchAgentStrip.swift`, `NotchCapsuleViews.swift`, `NotchAgentsView.swift`; `NotchAgentTests.swift` and multi-provider UI inspection. |
 | Usage Timeline | Preserve opt-in collection, native window/island views, app/document attribution, exclusions, pause/history deletion, local private storage, settings integration, and elapsed time through sleep. | `Services/UsageTimeline/`, `UI/UsageTimeline/`, `NotchUsageTimelineView.swift`; `UsageTimelineTests.swift`, affected feature/settings tests; [timeline behavior](USAGE-TIMELINE.md). |
+| Activity feed | Keep the opt-in public feed at `~/Library/Application Support/VorssaintFeed/feed.sqlite` matching its contract: WAL, schema version, active-only segments equal to the timeline's active total, transient-title merging, deletion and idle withdrawal, and feed failures that never stop collection. Kaizen depends on it. | `Services/ActivityFeed/`, the feed hooks in `UsageTimelineService.swift`, `UsageReducer.observe`; `ActivityFeedTests.swift`; [feed contract](ACTIVITY-FEED.md). |
 | Privacy and build | Do not persist question text or hook command/patch contents; retain metadata-only archive lifecycle. Keep Developer identity/update isolation, writable module caches, CPU-count fallback and icon regeneration. | `AgentUsageArchiveTests.swift`, `CodexInputHookTests.py`, `build.sh`, [privacy contract](PRIVACY.md); Developer build/selftest and affected install-isolation tests. |
 
 Known limits are part of this contract: generic Claude/Gemini approval dialogs

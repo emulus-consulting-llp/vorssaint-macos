@@ -12,6 +12,7 @@ struct UsageTimelineSettings: View {
     @AppStorage(DefaultsKey.usageTimelineTitles) private var titles = true
     @AppStorage(DefaultsKey.usageTimelinePaths) private var paths = true
     @AppStorage(DefaultsKey.panelUtilityUsageTimeline) private var showInPanel = true
+    @AppStorage(DefaultsKey.usageTimelineFeed) private var feed = false
     @State private var excluded: [String] = []
     private var strings: UsageTimelineStrings { UsageTimelineStrings(l10n.language) }
 
@@ -45,6 +46,22 @@ struct UsageTimelineSettings: View {
                 Toggle(strings[.titles], isOn: $titles)
                 Toggle(strings[.paths], isOn: $paths)
                 Toggle(l10n.s.monitorShowInPanel, isOn: $showInPanel)
+            }
+            Section(strings[.feed]) {
+                Toggle(strings[.feedEnable], isOn: $feed)
+                Text(strings[.feedHelp]).font(.caption).foregroundStyle(.secondary)
+                if feed {
+                    if let path = ActivityFeedStore.defaultURL?.path {
+                        Text(path).font(.caption.monospaced()).textSelection(.enabled)
+                    }
+                    if service.feedFailed {
+                        Text(strings[.feedError]).foregroundStyle(.red)
+                    } else if let updated = service.feedUpdated {
+                        Text(String(format: strings[.feedUpdated], updated.formatted(date: .omitted, time: .standard)))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Button(strings[.feedRebuild]) { service.rebuildFeed() }
+                }
             }
             Section(strings[.accessibility]) {
                 Text(strings[.permissionHelp]).font(.caption).foregroundStyle(.secondary)

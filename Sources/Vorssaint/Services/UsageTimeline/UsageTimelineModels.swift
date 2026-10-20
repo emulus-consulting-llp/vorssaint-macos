@@ -83,6 +83,20 @@ struct UsageForeground: Codable, Equatable {
               url.host == nil || url.host == "" || url.host == "localhost" else { return nil }
         return url.standardizedFileURL.path
     }
+
+    /// Same app, window and document; only the title text changed.
+    func differsOnlyByTitle(from other: UsageForeground) -> Bool {
+        var retitled = other
+        retitled.title = title
+        return retitled == self && other.title != title
+    }
+
+    /// An app observed before its window was read; `other` supplies the
+    /// details for the same process.
+    func awaitsDetails(of other: UsageForeground) -> Bool {
+        windowID == nil && title == nil && documentPath == nil
+            && processID == other.processID && other != self
+    }
 }
 
 struct UsageInterval: Codable, Identifiable, Equatable {
@@ -112,11 +126,17 @@ struct UsageInterval: Codable, Identifiable, Equatable {
 /// window visited during the idle detection horizon. Only the active presence
 /// interval is shortened; all foreground observations remain factual.
 struct UsageReducer {
+    /// A title held for less than this is transient (spinners, progress
+    /// counters, terminal status lines). Replacing it inside the same window
+    /// and document keeps one visit instead of a split per redraw. Window
+    /// details arriving this soon after an app switch complete the visit too.
+    static let transientTitle: TimeInterval = 3
     let sessionID: UUID
     private(set) var conditions: UsageConditions
     private(set) var foreground: UsageInterval?
     private(set) var presence: UsageInterval
     private var foregroundUptime: TimeInterval?
+    private var titleUptime: TimeInterval?
     private var presenceUptime: TimeInterval
     private var previous: UsageMoment
     private var pending: [UsageInterval] = []
@@ -135,11 +155,20 @@ struct UsageReducer {
         advance(to: moment)
         let allowed = conditions.canReadMetadata ? value : nil
         guard foreground?.foreground != allowed else { return }
+        if let allowed, var interval = foreground, let current = interval.foreground,
+           current.differsOnlyByTitle(from: allowed) || current.awaitsDetails(of: allowed),
+           let since = titleUptime, moment.uptime - since < Self.transientTitle {
+            interval.foreground = allowed
+            foreground = interval
+            titleUptime = moment.uptime
+            return
+        }
         closeForeground(at: moment)
         if let allowed {
             foreground = UsageInterval(sessionID: sessionID, stream: .foreground,
                                        start: moment.date, end: moment.date, duration: 0, foreground: allowed)
             foregroundUptime = moment.uptime
+            titleUptime = moment.uptime
         }
     }
 
@@ -190,6 +219,7 @@ struct UsageReducer {
                 foreground = UsageInterval(sessionID: sessionID, stream: .foreground,
                                            start: moment.date, end: moment.date, duration: 0, foreground: oldFocus)
                 foregroundUptime = moment.uptime
+                titleUptime = moment.uptime
             }
         }
         extendPresence(to: moment)
@@ -214,6 +244,7 @@ struct UsageReducer {
         }
         foreground = nil
         foregroundUptime = nil
+        titleUptime = nil
     }
 }
 
@@ -224,6 +255,8 @@ struct UsageTimelineEntry: Identifiable, Equatable {
     var duration: TimeInterval
     var state: UsagePresence
     var foreground: UsageForeground?
+    /// The stored interval this entry was cut from; nil for unrecorded gaps.
+    var source: UUID?
     var appKey: String? { foreground.map { $0.bundleID ?? $0.processID } }
 }
 
@@ -258,10 +291,12 @@ struct UsageDay {
         let presence = spans.filter { $0.stream == .presence }.sorted { $0.start < $1.start }
         var entries: [UsageTimelineEntry] = []
         var cursor = bounded.start
-        func append(_ start: Date, _ end: Date, _ state: UsagePresence, _ focus: UsageForeground?, _ key: String, rate: Double = 1) {
+        func append(_ start: Date, _ end: Date, _ state: UsagePresence, _ focus: UsageForeground?, _ key: String,
+                    rate: Double = 1, source: UUID? = nil) {
             guard end > start else { return }
             let entry = UsageTimelineEntry(id: key + ":" + String(start.timeIntervalSince1970), start: start,
-                                           end: end, duration: max(0, end.timeIntervalSince(start) * rate), state: state, foreground: focus)
+                                           end: end, duration: max(0, end.timeIntervalSince(start) * rate), state: state,
+                                           foreground: focus, source: source)
             entries.append(entry)
         }
         for span in presence {
@@ -276,13 +311,13 @@ struct UsageDay {
                     guard upper > lower else { continue }
                     append(focusedCursor, lower, .unrecorded, nil, "unknown")
                     append(lower, upper, .active, focus.foreground, focus.id.uuidString,
-                           rate: focus.duration / max(0.001, focus.end.timeIntervalSince(focus.start)))
+                           rate: focus.duration / max(0.001, focus.end.timeIntervalSince(focus.start)), source: focus.id)
                     focusedCursor = upper
                 }
                 append(focusedCursor, end, .unrecorded, nil, "unknown")
             } else {
                 append(start, end, state, nil, span.id.uuidString,
-                       rate: span.duration / max(0.001, span.end.timeIntervalSince(span.start)))
+                       rate: span.duration / max(0.001, span.end.timeIntervalSince(span.start)), source: span.id)
             }
             cursor = end
         }

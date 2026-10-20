@@ -77,6 +77,18 @@ final class UsageTimelineStore {
         return result
     }
 
+    /// Start of the oldest stored interval; nil while history is empty.
+    func earliestStart() throws -> Date? {
+        var result: Date?
+        try withStatement("SELECT min(start) FROM intervals") { statement in
+            guard sqlite3_step(statement) == SQLITE_ROW else { throw Failure.database("read", sqlite3_errcode(database)) }
+            if sqlite3_column_type(statement, 0) != SQLITE_NULL {
+                result = Date(timeIntervalSince1970: sqlite3_column_double(statement, 0))
+            }
+        }
+        return result
+    }
+
     func delete(in range: DateInterval?) throws {
         try transaction {
             guard let range else {
