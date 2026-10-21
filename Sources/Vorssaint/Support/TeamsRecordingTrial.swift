@@ -9,7 +9,7 @@ final class TeamsRecordingTrial: NSObject, NSApplicationDelegate {
     nonisolated static let flag = "--teams-record-trial"
     private let recorder: TeamsRecorderService
     private var signals: [DispatchSourceSignal] = []
-    init(parent: URL) { recorder = TeamsRecorderService(parent: parent) }
+    init(parent: URL) { recorder = TeamsRecorderService(parent: parent, showsMenuBarItem: true) }
 
     static func runAndExit() -> Never {
         let arguments = CommandLine.arguments

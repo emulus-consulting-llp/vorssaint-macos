@@ -11,7 +11,8 @@ The app saves separate audio sources, mixed playback and readable Teams captions
 Optional local whisper.cpp ASR and conservative caption-text name matching run
 after audio finalizes. Settings shows progress, cancellation, saved-folder links,
 and **Export Saved Captions…** / **Transcribe Saved Meeting…** for existing folders.
-The Teams menu-bar control offers Stop and Save and Stop Meeting Detection.
+Settings also offers **Stop and Save** during capture; turn off **Detect Teams
+meetings** to stop monitoring. The integrated recorder adds no menu-bar item.
 Quitting Vorssaint finalizes capture, cancels pending inference, and restores the
 readable prior Teams accessibility flags before termination.
 

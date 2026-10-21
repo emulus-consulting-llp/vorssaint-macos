@@ -15,6 +15,7 @@ final class TeamsRecorderService: NSObject, ObservableObject, NSWindowDelegate {
     static let folderKey = "teamsRecorderFolder"
     static let lastFolderKey = "teamsRecorderLastFolder"
     private let parentOverride: URL?
+    private let showsMenuBarItem: Bool
     var parent: URL {
         if let parentOverride { return parentOverride }
         let path = UserDefaults.standard.string(forKey: Self.folderKey) ?? ""
@@ -55,8 +56,9 @@ final class TeamsRecorderService: NSObject, ObservableObject, NSWindowDelegate {
     private var transcriptionConfiguration: TeamsTranscriptionService.Configuration?
     private var transcriptionCancellation: BoundedProcessCancellation?
 
-    init(parent: URL? = nil) {
+    init(parent: URL? = nil, showsMenuBarItem: Bool = false) {
         parentOverride = parent
+        self.showsMenuBarItem = showsMenuBarItem
         if let path = UserDefaults.standard.string(forKey: Self.lastFolderKey), !path.isEmpty {
             lastFolder = URL(fileURLWithPath: path, isDirectory: true)
         }
@@ -78,6 +80,17 @@ final class TeamsRecorderService: NSObject, ObservableObject, NSWindowDelegate {
         isMonitoring = true
         policy = TeamsRecordingPolicy()
         stateText = "Watching Teams…"
+        if showsMenuBarItem { createMenuBarItem() }
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.scan() }
+        }
+        self.timer = timer
+        RunLoop.main.add(timer, forMode: .common)
+        scan()
+    }
+
+    /// The standalone trial needs its own controls; the app uses Settings.
+    private func createMenuBarItem() {
         let status = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         self.status = status
         status.button?.title = "Teams ◯"
@@ -96,12 +109,6 @@ final class TeamsRecorderService: NSObject, ObservableObject, NSWindowDelegate {
         stopDetection.target = self
         menu.addItem(stopDetection)
         status.menu = menu
-        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.scan() }
-        }
-        self.timer = timer
-        RunLoop.main.add(timer, forMode: .common)
-        scan()
     }
 
     private func scan() {
