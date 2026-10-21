@@ -1,8 +1,70 @@
 # Teams audio recorder: implementation and evidence
 
-The first milestone is a developer-only AX inspector. Call detection, media
-capture, captions, ASR, speaker attribution, and action-item generation are not
-enabled yet. Their selectors depend on live evidence from this Teams version.
+The developer build has an AX inspector and an explicitly armed audio recording
+trial. The trial detects the observed Teams call controls, prompts once, saves
+separate audio sources and mixed playback, and collects caption observations.
+It is not installed as a normal Settings feature. Local ASR, finalized speaker
+attribution and action-item generation are still pending.
+
+## Run the recording trial
+
+After building the Developer executable, run from the repository in Terminal:
+
+```sh
+./build/VorssaintDeveloper --teams-record-trial /private/tmp
+```
+
+The argument must be an existing output folder. Substitute a preferred absolute
+folder path when desired. The command starts its own small menu-bar app before
+the utility's other services. It watches Teams only while this trial is running.
+An identified call opens a Start/Skip window. No audio is captured before Start.
+Use **Teams ● → Stop and Save** to finish; **Quit Teams Recorder Trial** and
+Terminal Ctrl-C also finalize capture and restore readable prior AX flags.
+
+The microphone checkbox defaults off. When enabled, it records the Mac's default
+input, which may differ from the microphone selected inside Teams. It retains
+audio in bounded memory until unmuted observations bracket it. Unknown/muted
+intervals, startup/tail audio without a confirming observation and the scans
+themselves are discarded from the archive. Quick changes between polls can still
+be missed. This mode needs live validation and does not guarantee exclusion of
+private room speech. Headphones reduce remote sound bleeding into the microphone.
+
+Each Start creates an exclusive owner-only subfolder named with date, sanitized
+title and a random suffix. It contains:
+
+- `sources.mov`: audio-only uncompressed PCM master (48 kHz, 16-bit stereo), with identifiable Teams and
+  optional microphone tracks on a shared host clock; no dummy video.
+- `recording.m4a`: mixed playback with headroom for overlapping speech, or
+  `recording.wav` if compact export is unavailable. A failed export retains the
+  source master and marks the manifest incomplete. Partial exports may remain.
+- `observations.jsonl`: locally observed caption/roster revisions and microphone
+  states with scan times. Unchanged text is not repeatedly written. These are
+  observation times, not finalized speech timestamps or a transcript.
+- `manifest.json`: state, requested sources, audio verification, buffer counts,
+  warnings and processing status. ASR and action items are marked not implemented.
+
+Source capture uses Vorssaint's existing app-specific CoreAudio process tap
+(macOS 14.4+) and microphone collector. It does not capture video or operate Teams
+screen-sharing controls. Concurrent sharing, device changes and echo still need
+a live test. Silent tap buffers do not prove permission was granted: the menu and
+manifest distinguish actual non-silent remote audio from an unverified source.
+
+The trial scans at most once per second with no overlapping scans and a 1.5 s
+AX budget. It activates enhanced accessibility once per Teams process and bounds
+window count, tree size/depth and microphone/audio backlog. This trial polling
+is not the final low-wakeup production detector. Only two successful no-window
+or not-running observations at least two seconds apart auto-stop capture. A Teams
+main window left open after hang-up can leave state unknown; use Stop and Save.
+AX errors or missing controls do not infer hang-up. Multiple detected call windows
+remain unknown. Source PCM uses roughly 0.69 GB/hour per stereo track, and WAV
+playback uses a similar amount; standard WAV fallback is bounded to its ~4 GB
+format limit. Compact export and source retention need product settings later.
+
+For a live check, use a non-sensitive short call: record remote speech, optionally
+enable the microphone and speak while unmuted/muted, stop from the menu, and play
+the mixed file. Check both voices and muted intervals. Then test hang-up with
+Teams windows both closed and left open. Do not use a real meeting as the first
+recording test. The UI and hardware paths have not yet been exercised here.
 
 ## Run the inspector
 
@@ -127,10 +189,11 @@ not finalize a live recording.
    diagnostic CLI, offline semantic analysis and tests. Both microphone states,
    caption pairs and two roster entries verified. Call transitions, timing and
    caption revisions still require validation.
-2. **Detection and audio capture:** verify selectors, register opt-in feature and
-   permissions, add debounced call state with an unknown state, prompt once per
-   call, choose destination, capture sources with safe mute handling and recovery.
-3. **Captions and transcription:** test revision collection; integrate a selected
+2. **Detection and audio capture (developer trial implemented):** live-test the
+   prompt, per-app tap, microphone filtering, output, call end and failure paths;
+   then register the opt-in production feature, settings and permissions. Add
+   process/window event wakeups and recovery UI before treating it as finished.
+3. **Captions and transcription:** validate collected revisions; integrate a selected
    local ASR/diarization backend and its model installation; align named evidence
    conservatively. FluidAudio is a candidate, not an installed dependency.
 4. **Action items:** local model adapter, evidence-linked structured extraction,
@@ -227,5 +290,198 @@ The updated Developer executable compiled and successfully analyzed the saved
 reports. Bundle packaging failed replacing `build/stage.noindex` with
 `Operation not permitted`, including after an escalated retry. It is not an
 installed or fully packaged feature. The current executable's app-wide selftest
-still fails swap-memory and uptime checks as above. Recording, automatic prompts,
-continuous caption collection and ASR/LLM processing are not implemented yet.
+still fails swap-memory and uptime checks as above. This validation predates the
+audio trial described at the start of this document.
+
+### Follow-up: after hang-up and lifecycle policy
+
+The after-call report had Accessibility trust, Teams still running, a successful
+`windowsListed` result and zero windows. This is explicit absence evidence for
+that run. It does not establish that all Teams call endings close every window.
+The reader now treats an unsupported root windows attribute as an error, rather
+than silently converting it into an empty list.
+
+The pure recording lifecycle offers once per call, suppresses a dismissed or
+manually stopped call, and requires two successful absence checks at least two
+seconds apart before automatic stop. Observation failure breaks that debounce;
+it never means hang-up. Stale prompts cannot start capture, and late startup
+completion cannot undo a stop. A different verified call cannot inherit capture.
+
+The microphone policy authorizes only audio bracketed by two timely unmuted
+observations. Unknown, muted and slow observations discard their interval. This
+is best-effort filtering: a mute/unmute between polls is undetectable, and audio
+during the AX scans themselves is excluded. It is not a privacy guarantee.
+`./build.sh --test-suite=teams-accessibility` passes 68 checks including the new
+lifecycle, observation-loss, startup-cancellation and microphone-gate cases.
+
+### Developer audio trial validation
+
+- `./build.sh --test-suite=teams-audio --test-suite=teams-accessibility`: **108
+  checks pass** (40 audio, 68 AX/lifecycle). Audio checks generate synthetic tones
+  and round-trip through the actual PCM master and WAV exporter. They verify
+  delayed microphone onset, both source frequencies, silence in microphone gaps,
+  float/planar format changes, 44.1 kHz mono input, an unused mic track, remote-only
+  capture, duration, empty recording failure and refusing an existing export.
+- PCM inputs concatenate data across internal timestamp holes, so the writer now
+  fills those holes with zeros before later microphone speech. The WAV fallback
+  applies source edit mappings and reads/mixes bounded blocks. It does not need
+  an AudioUnit mixer or AAC encoder. Device normalization uses AVAudioConverter.
+- AAC encoder creation and AVFoundation's audio mixing reader failed here, also
+  on escalated retries. WAV round trips pass; compact M4A export remains unverified
+  in this environment. Source PCM remains available if playback export fails.
+- The Developer executable compiles, including the isolated menu-bar UI and
+  asynchronous preparation. Full bundle staging still fails replacing the
+  existing `build/stage.noindex` directories with `Operation not permitted`.
+  No installed app was updated. The trial runs from the compiled executable.
+- Invalid trial arguments and a missing output directory are rejected before
+  monitoring or capture. App-wide selftest still reports the unrelated swap
+  memory and uptime failures documented above.
+- Live UI, microphone/TCC, app-audio routing, concurrent screen sharing, hardware
+  changes, call detection and post-call outputs still need the Terminal-launched
+  trial on the user's Mac. Synthetic tests do not establish those behaviors.
+
+### First live audio trial
+
+The Terminal-launched trial detected the call, requested capture permission,
+recorded non-silent Teams audio, automatically finalized after call end and
+successfully exported an AAC M4A on the user's Mac. `afinfo` reports 104.62 s,
+48 kHz stereo and one playback track. The source archive, local observations and
+manifest were present. Meeting content and identifiers remain outside Git.
+
+The run is incomplete as a two-sided recorder: microphone was requested but all
+9,741 mic buffers were discarded. The user confirms speaking while unmuted.
+There were 13 unmuted, 88 muted and 4 unknown observations, including 11 intervals
+that qualified for the mic gate; AX scans took at most 93 ms. No caption rows or
+roster entries were observed. Remote capture reported zero dropped audio buffers.
+The original mic cannot be recovered because it was discarded before archiving.
+
+The filter now has real CMSampleBuffer tests in addition to the pure AX policy.
+A reproduced rejection case is PCM with an invalid reported duration but valid
+frame count and sample rate. That duration is now derived from frames/rate; byte
+accounting uses the backing data buffer when sample-size metadata is absent.
+Mute/unknown evidence still prevents release. New manifests include categorized
+discard counters, inferred metadata counts and numeric arrival-delay bounds to
+distinguish timing/clock problems from mute exclusion without saving raw speech.
+The saved first-trial report lacks these diagnostics, so the exact live cause and
+the fix still require a short repeat recording; this is not a confirmed live fix.
+
+After this change, the targeted suites pass **122 checks** (68 AX/lifecycle and
+54 audio/filter). The new tests include missing-duration PCM release, integration
+with the actual writer, muted/unknown rejection, pending future audio, unconfirmed
+tail rejection, bounded backlog and arrival-delay diagnostics. The executable
+compiles; bundle staging retains the same permission failure.
+
+### Repeat live trial: microphone captured
+
+The next recording finalized automatically with manifest state `complete`, no
+warnings, zero dropped audio buffers and a valid 67.35 s stereo AAC playback file.
+It wrote 6,302 Teams buffers and 2,079 microphone buffers. All 6,267 received mic
+buffers needed backing-buffer byte accounting (`inferredByteCounts`); none needed
+duration inference. This confirms the zero sample-size metadata case on the real
+microphone path. Numeric arrival delays were 11.7–15.8 ms, so this run shows no
+clock-epoch mismatch. The filter excluded 4,188 buffers around muted, unknown and
+unconfirmed intervals. These counts are not proof of a general privacy guarantee.
+
+A local read-only PCM review found two independently tagged source tracks, both
+with nonzero audio. The microphone track had approximately 1.064 million nonzero
+frames. No microphone sample data overlapped the 36 intervals bracketed by two
+confirmed muted observations. Absent source intervals play as silence. This
+verifies the recorded sources in this test, not the content of speech or mute
+changes that could occur between AX polls. Only numeric audio statistics were
+printed; no transcription or external processing was performed.
+
+Caption capture remains unresolved: the user confirms captions were visible,
+but none of the saved observations recognized the expected caption panel. A new
+focused live AX diagnostic is required before changing those selectors. No
+meeting text or identities are copied into this evidence log.
+
+### Caption toolbar compatibility fix
+
+The follow-up with visible captions exposed a second toolbar layout on the same
+Teams version. The older compact layout has a direct
+`closed-captions-overflow-menu-button` sibling of the dismiss button. The newer
+non-overflow layout instead has
+`captions-settings-menu-trigger-button-non-overflow` inside a child group, plus
+`closed-captions-pop-out-button` in a separate child group. The dismiss button
+remains a direct child of their common controls group. Speaker and utterance
+values remain paired static text under the caption content branch.
+
+The parser now accepts either observed layout and requires a unique known
+settings anchor, the dismiss button, and the matching parent structure. The wide
+layout also requires the observed pop-out control. Duplicate/conflicting anchors,
+misplaced controls or AX errors remain unknown. Tests use synthetic names/text.
+
+The updated executable was run offline against the local real reports:
+
+| Snapshot | Caption rows read |
+| --- | ---: |
+| New visible non-overflow layout | 17 |
+| Earlier compact layout | 19 |
+| Earlier unmuted/roster layout | 18 |
+| Follow-up taken before the caption panel appeared | 0 |
+
+The visible-caption report is partial only because of the inspector's depth
+limit; intact rows can still be read. **129 targeted checks pass** (75 AX/lifecycle,
+54 audio/filter). The executable compiles; bundle staging and app-wide selftest
+retain the previously documented environment failures. A running trial must be
+quit and relaunched to use this parser fix. Reading a saved snapshot verifies
+selectors but does not establish complete continuous caption capture or ASR.
+
+Desktop UI reading became available during this test and confirmed caption text
+was visible. The desktop tool disallows Terminal automation, so the focused dump
+was launched by the user. No additional UI controls were pressed by the agent.
+
+### Continuous captions verified; queued audio writing
+
+The next restarted trial saved a 142.37 s M4A, both audio sources, and 108 changed
+observations containing caption rows with two distinct display labels. The caption
+panel was recognized in 110 saved observations. Labels identify Teams accounts,
+not independently verified human voices. This confirms continuous caption
+collection with the new toolbar selector, not a finalized/complete transcript.
+
+The manifest also exposed 256 dropped mic buffers: 2,886 passed the filter but
+only 2,630 reached the writer. The 13,336 remote buffers were saved. A read-only
+PCM review confirmed nonzero audio in both tracks and zero nonzero mic frames
+across 4,266,524 frames inside 98 brackets of confirmed muted observations.
+
+Previously the sink appended a released mic batch directly and dropped samples
+whenever AVAssetWriterInput was temporarily not ready. The sink now retains
+approved samples in an 8 MB / 2,048-buffer queue, retries each source independently
+and drains it before finalization. A long silence fill yields to the other source.
+Retries do not consume/convert the real sample or count as drops. Queue overflow,
+encoder failure and a 10 s final flush timeout stop with an explicit warning;
+there is no unbounded backlog or endless save loop. Unapproved mic buffers never
+enter this queue. The manifest includes retry and peak-backlog statistics.
+
+Tests cover ordered retry of released mic bursts, other-source progress, buffer
+and byte limits, preserving admitted data on overflow, writer failure, bounded
+flush timeout, and a burst through the actual PCM writer/exporter. The already
+saved recording's dropped mic buffers cannot be recovered. This queue change
+needs to be loaded by restarting the trial; it is not a verified live fix yet.
+
+After the queue change, **149 targeted checks pass** (75 AX/lifecycle and 74
+audio/filter/queue), without compiler warnings. The actual burst test writes all
+200 Teams buffers and all 90 mic buffers, fills a microphone gap, exports playback
+and preserves its two-second duration with zero writer drops. The Developer
+executable compiles; bundle staging still has the documented permission failure.
+
+### Queue fix verified in the next live trial
+
+The restarted trial finalized a 117.59 s M4A with state `complete`, no warnings,
+11,010 Teams buffers, all 1,537 released microphone buffers and **zero dropped
+audio buffers**. It retried the writer 28 times; the backlog peaked at 89 buffers
+and 182,272 bytes, far below the configured bounds. This verifies the queue
+handled actual writer backpressure in this run.
+
+The recording also saved 46 changed observations containing caption rows with
+two display labels. A local numeric PCM review confirmed nonzero audio in both
+tracks, with zero nonzero microphone frames across 4,040,829 frames inside 91
+brackets of confirmed muted observations. Automatic finalization, both audio
+sources, caption collection and queued writes now have positive live evidence.
+This does not establish coverage of every hardware/Teams state, complete
+transcription, or exclusion of quick mute changes between polls.
+
+No `whisper-cli`, `whisper-cpp`, `whisper` or `ollama` executable was available on
+the session PATH. Installing a local ASR engine/model is the next dependency;
+the workspace's DEV-mode agent-guard rule requires explicit approval before
+internet access or package installation. No meeting data has been sent externally.

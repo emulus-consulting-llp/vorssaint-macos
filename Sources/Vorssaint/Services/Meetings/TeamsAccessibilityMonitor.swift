@@ -180,7 +180,10 @@ struct TeamsAXReader: TeamsAXReading {
         }
         var count = 0
         let countError = AXUIElementGetAttributeValueCount(element, attribute as CFString, &count)
-        if countError == .attributeUnsupported || countError == .noValue { return .init() }
+        // Missing children are normal for a leaf. A missing root windows
+        // attribute is NOT proof that Teams has no windows (or ended a call).
+        if attribute == kAXChildrenAttribute,
+           countError == .attributeUnsupported || countError == .noValue { return .init() }
         guard countError == .success else { return .init(error: Int(countError.rawValue)) }
         let requested = min(count, max(0, limit))
         guard requested > 0 else { return .init(truncated: count > 0) }

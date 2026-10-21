@@ -13,6 +13,12 @@ struct MetricsTests {
             ("teams-accessibility", {
                 TeamsAccessibilityTests.run(suite)
                 TeamsCallObservationTests.run(suite)
+                TeamsRecordingPolicyTests.run(suite)
+            }),
+            ("teams-audio", {
+                TeamsMicrophoneFilterTests.run(suite)
+                TeamsAudioWriteQueueTests.run(suite)
+                TeamsAudioWriterTests.run(suite)
             }),
             ("harness", {
                 TestHarnessTests.run(suite)

@@ -90,6 +90,7 @@ enum TeamsCallObservationTests {
                         && muted.participants[0].microphone == .muted,
                      "participant name comes from avatar text, preserving commas and avoiding role/status suffixes")
         suite.expect(muted.rosterCompleteness == "unknown", "a visible roster is never assumed complete")
+        checkNonOverflowCaptions(suite)
         var unrelated = fixture()
         unrelated.nodes += [node("window/0/9", "AXGroup"),
                             node("window/0/9/0", "AXStaticText", value: "Not a speaker"),
@@ -117,5 +118,44 @@ enum TeamsCallObservationTests {
                      "offline analysis has no live AX selection or permission prompt")
         suite.expect((try? TeamsAXDiagnostic.Options(arguments: ["app", "--teams-ax-analyze", "/tmp/input.json", "relative.json"])) == nil,
                      "offline analysis also requires an explicit absolute output path")
+    }
+
+    private static func checkNonOverflowCaptions(_ suite: TestSuite) {
+        var wide = fixture()
+        wide.nodes.removeAll { $0.attributes["AXDOMIdentifier"] == "closed-captions-overflow-menu-button" }
+        wide.nodes += [
+            node("window/0/3/1/0", "AXGroup"),
+            node("window/0/3/1/0/0", "AXPopUpButton", "captions-settings-menu-trigger-button-non-overflow"),
+            node("window/0/3/1/2", "AXGroup"),
+            node("window/0/3/1/2/0", "AXButton", "closed-captions-pop-out-button")
+        ]
+        let observed = TeamsCallObservation.read(wide)
+        suite.expect(observed.captionPanelObserved && observed.captionLines.count == 2,
+                     "non-overflow caption settings and pop-out wrappers identify the observed wide layout")
+        suite.expect(observed.captionLines.map(\.speakerDisplayName) == ["Test Speaker", "Another Speaker"],
+                     "wide layout preserves observed speaker/text pairs")
+        var ambiguous = wide
+        ambiguous.nodes.append(node("window/0/3/1/4", "AXPopUpButton", "closed-captions-overflow-menu-button"))
+        suite.expect(!TeamsCallObservation.read(ambiguous).captionPanelObserved,
+                     "simultaneous old and new settings anchors remain ambiguous")
+        var duplicate = wide
+        duplicate.nodes.append(node("window/0/3/1/2/1", "AXPopUpButton", "captions-settings-menu-trigger-button-non-overflow"))
+        suite.expect(TeamsCallObservation.read(duplicate).captionLines.isEmpty,
+                     "duplicate wide settings anchors cannot authorize caption extraction")
+        var noPopout = wide
+        noPopout.nodes.removeAll { $0.attributes["AXDOMIdentifier"] == "closed-captions-pop-out-button" }
+        suite.expect(!TeamsCallObservation.read(noPopout).captionPanelObserved,
+                     "incomplete wide control evidence does not guess a caption panel")
+        var unrelated = wide
+        unrelated.nodes.removeAll { $0.attributes["AXDOMIdentifier"] == "captions-settings-menu-trigger-button-non-overflow" }
+        unrelated.nodes.append(node("window/0/3/0/0", "AXPopUpButton", "captions-settings-menu-trigger-button-non-overflow"))
+        suite.expect(!TeamsCallObservation.read(unrelated).captionPanelObserved,
+                     "a settings control in the content branch cannot anchor the dismiss toolbar")
+        var errored = wide
+        let index = errored.nodes.firstIndex { $0.attributes["AXDOMIdentifier"] == "captions-settings-menu-trigger-button-non-overflow" }!
+        errored.nodes[index] = .init(path: errored.nodes[index].path, depth: errored.nodes[index].depth,
+            attributes: errored.nodes[index].attributes, errors: ["AXTitle": -25204], omissions: [])
+        suite.expect(TeamsCallObservation.read(errored).captionLines.isEmpty,
+                     "errored wide settings evidence remains unknown")
     }
 }

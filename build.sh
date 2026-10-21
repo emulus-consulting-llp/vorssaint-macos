@@ -257,6 +257,10 @@ if (( TEST )); then
     TEST_SOURCES=(
         Sources/Vorssaint/Services/Meetings/TeamsAXSnapshot.swift
         Sources/Vorssaint/Services/Meetings/TeamsCallObservation.swift
+        Sources/Vorssaint/Services/Meetings/TeamsRecordingPolicy.swift
+        Sources/Vorssaint/Services/Meetings/TeamsAudioWriter.swift
+        Sources/Vorssaint/Services/Meetings/TeamsAudioWriteQueue.swift
+        Sources/Vorssaint/Services/Meetings/TeamsMicrophoneFilter.swift
         Sources/Vorssaint/Services/Meetings/TeamsAccessibilityMonitor.swift
         Sources/Vorssaint/Support/TeamsAXDiagnostic.swift
         Sources/Vorssaint/Services/UsageTimeline/UsageTimelineModels.swift

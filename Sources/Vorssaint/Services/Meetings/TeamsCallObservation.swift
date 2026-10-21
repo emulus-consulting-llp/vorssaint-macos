@@ -60,13 +60,9 @@ struct TeamsCallObservation: Codable {
             result.limitations.append("Unrecognized or conflicting microphone action labels.")
         }
 
-        // Anchor captions to the observed dismiss/overflow controls, never to
+        // Anchor captions to the observed dismiss/settings controls, never to
         // arbitrary speaker-looking text elsewhere in the Teams window.
-        if let dismiss = tree.unique(identifier: "captions-panel-dismiss-button", role: "AXButton", below: web.path),
-           let overflow = tree.unique(identifier: "closed-captions-overflow-menu-button", role: "AXPopUpButton", below: web.path),
-           Tree.parent(dismiss.path) == Tree.parent(overflow.path),
-           let controlsPath = Tree.parent(dismiss.path), let panelPath = Tree.parent(controlsPath),
-           let panel = tree.at(panelPath), Tree.usable(panel) {
+        if let (panelPath, controlsPath) = tree.captionPanel(below: web.path) {
             result.captionPanelObserved = true
             for row in tree.nodes where Tree.isBelow(row.path, panelPath)
                 && !Tree.isBelow(row.path, controlsPath) && row.path != controlsPath
@@ -139,6 +135,38 @@ struct TeamsCallObservation: Codable {
 
         func at(_ path: String) -> TeamsAXSnapshot.Node? { unique { $0.path == path } }
         func children(of path: String) -> [TeamsAXSnapshot.Node] { nodes.filter { Self.parent($0.path) == path } }
+
+        /// Two layouts observed on the same English Teams build. Accept one
+        /// unique known settings anchor in the dismiss button's control group;
+        /// never fall back to names/text from arbitrary nearby UI.
+        func captionPanel(below web: String) -> (panel: String, controls: String)? {
+            let settingsIDs: Set<String> = ["closed-captions-overflow-menu-button",
+                                           "captions-settings-menu-trigger-button-non-overflow"]
+            guard let dismiss = unique(identifier: "captions-panel-dismiss-button", role: "AXButton", below: web),
+                  let settings = unique(where: {
+                      $0.attributes["AXRole"] == "AXPopUpButton"
+                          && settingsIDs.contains($0.attributes["AXDOMIdentifier"] ?? "")
+                          && Self.isBelow($0.path, web)
+                  }),
+                  let controls = Self.parent(dismiss.path), let panel = Self.parent(controls),
+                  let controlsNode = at(controls), let panelNode = at(panel),
+                  Self.usable(controlsNode), Self.usable(panelNode),
+                  controlsNode.attributes["AXRole"] == "AXGroup", panelNode.attributes["AXRole"] == "AXGroup" else { return nil }
+
+            if settings.attributes["AXDOMIdentifier"] == "closed-captions-overflow-menu-button" {
+                guard Self.parent(settings.path) == controls else { return nil }
+            } else {
+                // Wide/non-overflow toolbar wraps each button in its own group.
+                guard let wrapper = Self.parent(settings.path), Self.parent(wrapper) == controls,
+                      let settingsGroup = at(wrapper), Self.usable(settingsGroup),
+                      settingsGroup.attributes["AXRole"] == "AXGroup",
+                      let popout = unique(identifier: "closed-captions-pop-out-button", role: "AXButton", below: controls),
+                      let popoutWrapper = Self.parent(popout.path), Self.parent(popoutWrapper) == controls,
+                      popoutWrapper != wrapper, let popoutGroup = at(popoutWrapper), Self.usable(popoutGroup),
+                      popoutGroup.attributes["AXRole"] == "AXGroup" else { return nil }
+            }
+            return (panel, controls)
+        }
 
         func unique(identifier: String, role: String, below path: String) -> TeamsAXSnapshot.Node? {
             unique { $0.attributes["AXDOMIdentifier"] == identifier && $0.attributes["AXRole"] == role
