@@ -282,8 +282,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         UserDefaults.standard.removeObject(forKey: DefaultsKey.startupDidNotFinish)
     }
 
+    private var meetingTerminationPending = false
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if meetingTerminationPending { return .terminateCancel }
         if inputSourceRestorationPending { return .terminateLater }
+        if TeamsRecorderService.shared.needsTerminationHandling {
+            meetingTerminationPending = true
+            // A terminate-later modal loop can starve the main actor while
+            // capture finalization awaits it. Keep the normal event loop alive,
+            // then retry termination after audio and AX restoration finish.
+            Task { @MainActor [weak self] in
+                TeamsRecorderService.shared.shutdown { [weak self] in
+                    self?.meetingTerminationPending = false
+                    sender.terminate(nil)
+                }
+            }
+            return .terminateCancel
+        }
         guard CommandBarService.shared.hasBorrowedInputSource else { return .terminateNow }
         inputSourceRestorationPending = true
         // Terminate-later runs a modal loop, which may be nested inside a

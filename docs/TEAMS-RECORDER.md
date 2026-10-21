@@ -1,12 +1,24 @@
 # Teams audio recorder: implementation and evidence
 
-The developer build has an AX inspector and an explicitly armed audio recording
-trial. The trial detects the observed Teams call controls, prompts once, saves
-separate audio sources and mixed playback, and collects caption observations.
-It is not installed as a normal Settings feature. Optional local whisper.cpp ASR
-and conservative caption-text name matching are implemented in the developer
-trial. Local recognition is verified on a saved two-source test recording.
-Remote voice diarization and action-item generation are still pending.
+The recorder is available inside Vorssaint at **Settings → Screen Capture →
+Recording → Teams Meeting Recorder**. Enable **Detect Teams meetings** to arm
+it; it prompts before each call and records only after Start. Monitoring is off
+by default. Microphone capture remains an explicit per-call choice, off by
+default. The default destination is `~/Documents/Vorssaint Meetings`; choose a
+different folder in Settings if needed.
+
+The app saves separate audio sources, mixed playback and readable Teams captions.
+Optional local whisper.cpp ASR and conservative caption-text name matching run
+after audio finalizes. Settings shows progress, cancellation, saved-folder links,
+and **Export Saved Captions…** / **Transcribe Saved Meeting…** for existing folders.
+The Teams menu-bar control offers Stop and Save and Stop Meeting Detection.
+Quitting Vorssaint finalizes capture, cancels pending inference, and restores the
+readable prior Teams accessibility flags before termination.
+
+The developer trial uses the same recording service. Local recognition is
+verified on saved two-source recordings. Remote voice diarization and action-item
+generation are still pending. The new native Settings workflow requires a live
+call check after installing the rebuilt app.
 
 ## Open test: minimized Teams window
 
@@ -36,7 +48,7 @@ The argument must be an existing output folder. Substitute a preferred absolute
 folder path when desired. The command starts its own small menu-bar app before
 the utility's other services. It watches Teams only while this trial is running.
 An identified call opens a Start/Skip window. No audio is captured before Start.
-Use **Teams ● → Stop and Save** to finish; **Quit Teams Recorder Trial** and
+Use **Teams ● → Stop and Save** to finish; **Stop Meeting Detection** and
 Terminal Ctrl-C also finalize capture and restore readable prior AX flags.
 
 The microphone checkbox defaults off. When enabled, it records the Mac's default
@@ -58,6 +70,11 @@ title and a random suffix. It contains:
 - `observations.jsonl`: locally observed caption/roster revisions and microphone
   states with scan times. Unchanged text is not repeatedly written. These are
   observation times, not finalized speech timestamps or a transcript.
+- `captions.md` and `captions.json`: readable Teams captions and structured rows,
+  independent of ASR. Repeated visible rows and identifiable consecutive revisions
+  are combined; later repeated speech is preserved. Timestamps mean first observed
+  on screen, not exact speech times. These exports may include gaps or remaining
+  revisions and are not claimed to be Teams' official transcript.
 - `manifest.json`: state, requested sources, audio verification, buffer counts,
   warnings and processing status. Transcription has an independent processing
   state; action items remain not implemented.
@@ -91,6 +108,20 @@ An already finalized recording can be processed without another Teams call:
 ```sh
 ./build/VorssaintDeveloper --teams-transcribe /absolute/recording-folder
 ```
+
+For captions alone, with no model or audio recognition required:
+
+```sh
+./build/VorssaintDeveloper --teams-export-captions /absolute/recording-folder
+```
+
+Exports preserve existing files. Move a user-edited export aside explicitly if
+you want to regenerate it. Local transcription requests sentence JSON (`-oj`),
+avoiding full token diagnostics that can contain split UTF-8 bytes in multilingual
+speech. The decoder also accepts legacy full output when only unused diagnostics
+contain malformed bytes; malformed sentence text remains an explicit error.
+Transcription errors are recorded in the manifest and never erase saved audio
+or caption exports.
 
 The service automatically retries on CPU after a recognized Metal buffer
 allocation failure and uses CPU for the remaining chunks. Other engine errors

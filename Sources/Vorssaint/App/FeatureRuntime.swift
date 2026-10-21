@@ -332,6 +332,7 @@ final class FeatureRuntime: ObservableObject {
         .screenRecorder: {
             ScreenCaptureService.shared.syncWithPreferences()
             ScreenRecorderService.shared.syncWithPreferences()
+            Task { @MainActor in TeamsRecorderService.shared.syncWithPreferences() }
             RecentCaptureService.shared.syncWithPreferences()
         },
         .cameraPreview: { CameraPreviewService.shared.syncWithPreferences() },

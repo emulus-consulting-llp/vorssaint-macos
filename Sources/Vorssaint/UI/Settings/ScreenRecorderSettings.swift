@@ -66,6 +66,8 @@ struct ScreenRecordingCaptureSettings: View {
             }
             .settingsFormSectionAnchor(.screenRecorder)
 
+            TeamsRecorderSettings()
+
             Section {
                 Picker(strings.countdownLabel, selection: $countdown) {
                     ForEach(ScreenshotSupport.allowedDelays, id: \.self) { seconds in

@@ -2502,9 +2502,11 @@ enum CommandBarInputSourceContract {
 /// run-loop modes, with inert replies and input sources. No app quits or layout changes.
 enum CommandBarTerminationContract {
     final class Application {
-        enum TerminateReply { case terminateNow, terminateLater }
+        enum TerminateReply { case terminateNow, terminateLater, terminateCancel }
         var replies: [Bool] = []
         var sourceAtReply: [String] = []
+        var terminationRequests = 0
+        func terminate(_ sender: Any?) { terminationRequests += 1 }
         func reply(toApplicationShouldTerminate accepted: Bool) {
             sourceAtReply.append(CommandBarInputSourceContract.Sources.current)
             replies.append(accepted)
@@ -2513,13 +2515,32 @@ enum CommandBarTerminationContract {
     enum Bar {
         static var shared = CommandBarInputSourceContract.Service()
     }
+    final class Recorder {
+        static var shared = Recorder()
+        var needsTerminationHandling = false
+        var shutdownRequests = 0
+        var completion: (() -> Void)?
+        func shutdown(completion: @escaping () -> Void) {
+            shutdownRequests += 1
+            self.completion = completion
+        }
+        func finish() {
+            needsTerminationHandling = false
+            let done = completion
+            completion = nil
+            done?()
+        }
+    }
     class Fixture {
         typealias NSApplication = Application
         typealias CommandBarService = Bar
+        typealias TeamsRecorderService = Recorder
         var inputSourceRestorationPending = false
+        var meetingTerminationPending = false
     }
     static func run(_ suite: TestSuite) {
         func reset(borrowed: Bool) -> (Host, Application) {
+            Recorder.shared = Recorder()
             Bar.shared = CommandBarInputSourceContract.Service()
             Bar.shared.suspendedInputSourceID = borrowed ? "original" : nil
             CommandBarInputSourceContract.Sources.current = borrowed ? "ascii" : "original"
@@ -2534,6 +2555,7 @@ enum CommandBarTerminationContract {
             }
         }
         defer {
+            Recorder.shared = Recorder()
             Bar.shared = CommandBarInputSourceContract.Service()
             CommandBarInputSourceContract.Sources.current = "original"
             CommandBarInputSourceContract.Sources.selected = []
@@ -2597,6 +2619,28 @@ enum CommandBarTerminationContract {
         // A regression may only deliver after leaving the modal mode; drain
         // that reply before fixture cleanup while retaining the failed verdict.
         awaitReply(modalApp)
+
+        for borrowed in [false, true] {
+            let (meetingHost, meetingApp) = reset(borrowed: borrowed)
+            Recorder.shared.needsTerminationHandling = true
+            suite.expect(meetingHost.applicationShouldTerminate(meetingApp) == .terminateCancel,
+                         "recording shutdown keeps the normal event loop alive for asynchronous saving")
+            suite.expect(meetingHost.applicationShouldTerminate(meetingApp) == .terminateCancel,
+                         "repeated quit cannot bypass a pending meeting save")
+            let deadline = ProcessInfo.processInfo.systemUptime + 2
+            while Recorder.shared.shutdownRequests == 0 && ProcessInfo.processInfo.systemUptime < deadline {
+                _ = RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.005))
+            }
+            suite.expect(Recorder.shared.shutdownRequests == 1 && meetingApp.terminationRequests == 0,
+                         "quit starts one shutdown and does not terminate before its completion")
+            Recorder.shared.finish()
+            suite.expect(meetingApp.terminationRequests == 1 && !meetingHost.meetingTerminationPending,
+                         "finished meeting save retries application termination exactly once")
+            let decision = meetingHost.applicationShouldTerminate(meetingApp)
+            suite.expect(decision == (borrowed ? .terminateLater : .terminateNow),
+                         "after saving, normal borrowed input source restoration still owns final termination")
+            if borrowed { awaitReply(meetingApp) }
+        }
     }
 }
 

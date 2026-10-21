@@ -340,6 +340,7 @@ enum SettingsSearchSupport {
                            screenshot.pinButton, screenshot.toolPixelate, screenshot.toolBlur,
                            screenshot.toolArrow, screenshot.addToShelfToggle]),
             (.screenRecorder, [recorder.pageTitle, recorder.startButton,
+                               "Teams Meeting Recorder", "Teams captions", "Meeting transcription",
                                recorder.systemAudioToggle, recorder.microphoneToggle,
                                recorder.qualityLabel, recorder.frameRateLabel]),
             (.screenOCR, [strings.ocrName, strings.ocrRemoveLineBreaksToggle, strings.ocrQRToggle]),

@@ -4,7 +4,7 @@
 import ApplicationServices
 import CoreMedia
 
-/// Explicitly armed developer trial only. Scans are serialized by the caller;
+/// Explicitly enabled meeting detection. Scans are serialized by the caller;
 /// each has a budget and unsupported/slow observations remain unknown.
 final class TeamsCallScanner {
     struct Reading {
