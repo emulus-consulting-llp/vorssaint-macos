@@ -32,13 +32,11 @@ enum TeamsTranscriptionTests {
             offset: 0, duration: 1, audibleRanges: [0...1])
         suite.expect(recovered.first?.text == "Hello नमस्ते", "split UTF-8 in unused full-output token diagnostics cannot destroy valid multilingual sentence text")
         let corruptSpeech = Data("{\"transcription\":[{\"offsets\":{\"from\":0,\"to\":1000},\"text\":\"bad � speech\"}]}".utf8)
-        do {
-            _ = try TeamsTranscriptTurn.decodeWhisper(corruptSpeech, source: .system,
-                offset: 0, duration: 1, audibleRanges: [0...1])
-            suite.expect(false, "corrupt sentence text must be rejected")
-        } catch TeamsTranscriptionService.Failure.output {
-            suite.expect(true, "invalid sentence text is not silently published")
-        }
+        let repaired = try TeamsTranscriptTurn.decodeWhisper(corruptSpeech, source: .system,
+            offset: 0, duration: 1, audibleRanges: [0...1])
+        suite.expect(repaired.first?.textEncodingRepaired == true
+                     && TeamsTranscriptTurn.markdown(repaired, model: "test", warnings: []).contains("[text encoding repaired]"),
+                     "damaged sentence characters remain visibly marked without losing the rest of the transcript")
         let json = Data("""
         {"transcription":[
           {"offsets":{"from":100,"to":400},"text":"Please send the review tomorrow."},

@@ -10,6 +10,7 @@ struct TeamsTranscriptTurn: Codable {
     var speaker: String
     var attribution: String
     let text: String
+    var textEncodingRepaired: Bool? = nil
 
     private struct WhisperOutput: Decodable {
         struct Segment: Decodable {
@@ -25,13 +26,11 @@ struct TeamsTranscriptTurn: Codable {
                               audibleRanges: [ClosedRange<Double>]) throws -> [TeamsTranscriptTurn] {
         // Older -ojf output can contain incomplete UTF-8 bytes in token
         // diagnostics (multilingual tokens may split a scalar). They are not
-        // speech text. Decode those unused fields tolerantly, but never publish
-        // repaired/corrupt sentence text as a successful transcript.
+        // speech text. Sentence output can also end with a split scalar. Keep
+        // the remaining speech with a visible replacement and review marker,
+        // rather than losing the whole meeting for one malformed character.
         let normalized = Data(String(decoding: data, as: UTF8.self).utf8)
         let output = try JSONDecoder().decode(WhisperOutput.self, from: normalized)
-        guard !output.transcription.contains(where: { $0.text.contains("\u{FFFD}") }) else {
-            throw TeamsTranscriptionService.Failure.output
-        }
         return output.transcription.compactMap { segment in
             let start = segment.offsets.from / 1_000
             let end = min(duration, segment.offsets.to / 1_000)
@@ -42,13 +41,16 @@ struct TeamsTranscriptTurn: Codable {
             return .init(start: start + offset, end: end + offset, source: source,
                 speaker: source == .microphone ? "You" : "Remote",
                 attribution: source == .microphone ? "localMicrophoneSource" : "unknownRemote",
-                text: text)
+                text: text, textEncodingRepaired: text.contains("\u{FFFD}") ? true : nil)
         }
     }
 
     static func markdown(_ turns: [TeamsTranscriptTurn], model: String, warnings: [String]) -> String {
         var result = "# Meeting transcript\n\nLocal ASR: whisper.cpp (\(escape(model))). Review recognition errors.\n\n"
         result += "You identifies the local microphone source. Remote names marked † are matched to locally observed Teams caption text; they are not verified voice identities. Unmatched remote speech stays Remote. Caption display time is not used as speech time.\n\n"
+        if turns.contains(where: { $0.textEncodingRepaired == true }) {
+            result += "Some speech text contained malformed characters. Affected turns are marked [text encoding repaired]; � marks unreadable characters. Compare those passages with captions.md or the audio.\n\n"
+        }
         for warning in warnings { result += "- \(escape(warning))\n" }
         if !warnings.isEmpty { result += "\n" }
         if turns.isEmpty { result += "No speech was recognized in the saved audio.\n" }
@@ -56,7 +58,8 @@ struct TeamsTranscriptTurn: Codable {
             let seconds = Int(max(0, turn.start))
             let time = String(format: "%02d:%02d:%02d", seconds / 3_600, seconds / 60 % 60, seconds % 60)
             let marker = turn.attribution == "captionTextMatch" ? "†" : ""
-            result += "[\(time)] **\(escape(turn.speaker))\(marker):** \(escape(turn.text))\n\n"
+            let repair = turn.textEncodingRepaired == true ? " [text encoding repaired]" : ""
+            result += "[\(time)] **\(escape(turn.speaker))\(marker):** \(escape(turn.text))\(repair)\n\n"
         }
         return result
     }

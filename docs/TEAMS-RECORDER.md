@@ -119,7 +119,9 @@ Exports preserve existing files. Move a user-edited export aside explicitly if
 you want to regenerate it. Local transcription requests sentence JSON (`-oj`),
 avoiding full token diagnostics that can contain split UTF-8 bytes in multilingual
 speech. The decoder also accepts legacy full output when only unused diagnostics
-contain malformed bytes; malformed sentence text remains an explicit error.
+contain malformed bytes. Malformed sentence characters are replaced with `�`
+and the affected turns are marked `[text encoding repaired]` for review against
+the captions or audio. Invalid JSON structure still fails explicitly.
 Transcription errors are recorded in the manifest and never erase saved audio
 or caption exports.
 
