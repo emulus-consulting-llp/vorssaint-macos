@@ -5,7 +5,7 @@ import AVFoundation
 
 /// The two sound sources a take can carry. Their stable identifiers live in
 /// track metadata so new recordings never depend on track order.
-enum RecorderAudioSource: String, CaseIterable, Hashable {
+enum RecorderAudioSource: String, CaseIterable, Hashable, Codable {
     case system
     case microphone
 

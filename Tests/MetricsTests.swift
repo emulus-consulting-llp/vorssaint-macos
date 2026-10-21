@@ -20,6 +20,7 @@ struct MetricsTests {
                 TeamsAudioWriteQueueTests.run(suite)
                 TeamsAudioWriterTests.run(suite)
             }),
+            ("teams-transcription", { TeamsTranscriptionTests.run(suite) }),
             ("harness", {
                 TestHarnessTests.run(suite)
                 PreferenceNamespaceTests.run(suite)

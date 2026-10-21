@@ -248,7 +248,7 @@ final class TeamsAudioWriter: @unchecked Sendable {
         try file.synchronize()
     }
 
-    private final class PCMReader {
+    final class PCMReader {
         private let reader: AVAssetReader
         private let output: AVAssetReaderTrackOutput
         private let mappings: [CMTimeMapping]

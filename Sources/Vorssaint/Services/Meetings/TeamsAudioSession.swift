@@ -117,7 +117,7 @@ private final class TeamsAudioSink: @unchecked Sendable {
                     "state": "recording", "microphoneRequested": includesMicrophone,
                     "microphonePolicy": "Best-effort bracketed AX observations; brief mute changes may be missed. Default system input; use headphones to reduce echo.",
                     "captionTiming": "Observation times only; rows can revise or repeat. Not a transcript.",
-                    "transcriptionState": "notImplemented", "actionItemsState": "notImplemented"]
+                    "transcriptionState": "notRequested", "actionItemsState": "notImplemented"]
         writer = try TeamsAudioWriter(url: folder.appendingPathComponent("sources.mov"),
                                       origin: origin, includesMicrophone: includesMicrophone)
         try saveManifest()

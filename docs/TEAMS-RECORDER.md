@@ -3,8 +3,26 @@
 The developer build has an AX inspector and an explicitly armed audio recording
 trial. The trial detects the observed Teams call controls, prompts once, saves
 separate audio sources and mixed playback, and collects caption observations.
-It is not installed as a normal Settings feature. Local ASR, finalized speaker
-attribution and action-item generation are still pending.
+It is not installed as a normal Settings feature. Optional local whisper.cpp ASR
+and conservative caption-text name matching are implemented in the developer
+trial. Local recognition is verified on a saved two-source test recording.
+Remote voice diarization and action-item generation are still pending.
+
+## Open test: minimized Teams window
+
+- [ ] Verify capture while Teams is minimized. Process-level app audio is expected
+  to continue, but this has not been demonstrated in a live minimized call.
+- [ ] Verify that mute controls and captions remain accessible while minimized.
+  Unknown mute state excludes microphone audio; missing captions can leave remote
+  speech unnamed. An unavailable AX observation must not imply the call ended.
+- [ ] Record remote/local speech with captions on, minimize, toggle mute and speak,
+  restore, then hang up. Inspect source continuity, excluded mic intervals and
+  recovery, caption gaps, transcript timing/name fallback and finalization.
+- [ ] Separately test initial call detection when the call window is already
+  minimized, and automatic post-call transcription in the rebuilt trial UI.
+
+Do not promise complete two-sided recording while minimized until these checks
+have live evidence. Keep this open independently of the passing synthetic tests.
 
 ## Run the recording trial
 
@@ -26,8 +44,8 @@ input, which may differ from the microphone selected inside Teams. It retains
 audio in bounded memory until unmuted observations bracket it. Unknown/muted
 intervals, startup/tail audio without a confirming observation and the scans
 themselves are discarded from the archive. Quick changes between polls can still
-be missed. This mode needs live validation and does not guarantee exclusion of
-private room speech. Headphones reduce remote sound bleeding into the microphone.
+be missed. Live gate results are documented below; this mode does not guarantee
+exclusion of private room speech. Headphones reduce remote sound bleeding into the microphone.
 
 Each Start creates an exclusive owner-only subfolder named with date, sanitized
 title and a random suffix. It contains:
@@ -41,7 +59,118 @@ title and a random suffix. It contains:
   states with scan times. Unchanged text is not repeatedly written. These are
   observation times, not finalized speech timestamps or a transcript.
 - `manifest.json`: state, requested sources, audio verification, buffer counts,
-  warnings and processing status. ASR and action items are marked not implemented.
+  warnings and processing status. Transcription has an independent processing
+  state; action items remain not implemented.
+
+## Local transcription setup and retries
+
+Run this from the repository in Terminal after approving installation:
+
+```sh
+/bin/zsh Tools/setup-teams-transcription.sh
+```
+
+The script installs the [Homebrew whisper.cpp formula](https://formulae.brew.sh/formula/whisper.cpp)
+when `whisper-cli` is absent, then downloads the upstream multilingual
+[`ggml-small.bin`](https://huggingface.co/ggerganov/whisper.cpp/blob/main/ggml-small.bin)
+model (about 488 MB). It verifies SHA-256
+`1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b`
+before publishing into
+`~/Library/Application Support/com.vorssaint.utils/MeetingModels/`.
+An existing model is verified and never replaced. Setup accesses public package
+and model servers; transcription itself runs locally without uploading audio.
+
+When the engine and model are present, the trial offers **Transcribe locally
+after saving audio**, enabled by default. Audio finalizes first; the menu then
+shows local processing. The trial watches for the next call after processing
+finishes. Quitting cancels inference and preserves saved audio for retry.
+Restart the trial to load a rebuilt executable.
+
+An already finalized recording can be processed without another Teams call:
+
+```sh
+./build/VorssaintDeveloper --teams-transcribe /absolute/recording-folder
+```
+
+The service automatically retries on CPU after a recognized Metal buffer
+allocation failure and uses CPU for the remaining chunks. Other engine errors
+and timeouts remain explicit failures. The transcript discloses a fallback;
+the manifest records the selected backend. Bounded failure diagnostics can
+contain speech and are retained only inside the private attempt folder.
+The engine's `-np` flag is deliberately omitted: on 1.9.5 it suppresses the
+allocation failure reason as well as routine diagnostics. Engine output is
+captured/drained privately, with at most 128 KiB retained; it is never forwarded
+to the console.
+
+Add `--cpu` to disable GPU inference, or `--language en` to select a language
+instead of automatic detection. Custom engines/models can be supplied together
+with `--whisper-cli /absolute/whisper-cli --model /absolute/model.bin`.
+These arguments follow the [upstream CLI](https://github.com/ggml-org/whisper.cpp/tree/master/examples/cli).
+Only progress and counts appear on the console. Meeting text stays in local
+files. The command requires a completed source master; it does not re-record
+audio, contact Teams or request Accessibility permission.
+
+Source metadata identifies the microphone as **You** and app audio as **Remote**.
+Each source is resampled to 16 kHz mono using a low-pass filter, in bounded
+ten-minute chunks retaining the common recording origin and excluded mic gaps.
+All-silent chunks are skipped. Chunk edges may truncate a word. A six-hour limit
+bounds preparation; inference has a per-chunk timeout and cancellation support.
+There is no remote-speaker diarizer in this version. Caption text can supply a
+display name only for a nearby, substantial and unambiguous textual match; the
+Markdown marks these labels with †. A roster or window title never supplies an
+unevidenced identity. Recognized words and speaker labels still need review.
+
+A successful run publishes `transcript.md` exclusively with mode 0600. Existing
+transcripts are preserved; move one aside intentionally before a retry. Private
+`transcription-<UUID>/` directories retain engine JSON, timestamped `turns.json`
+and the generated draft for inspection. Prepared WAVs are removed after each
+successful chunk; a failed/cancelled attempt can retain private intermediate
+audio. A lock prevents simultaneous jobs for the same recording. The manifest
+records processing/complete/failed/cancelled independently of audio completion.
+No `action-items.md` is generated yet.
+
+Validation: **179 targeted checks pass**, including 30 transcription checks for
+milliseconds/chunk offsets, silence filtering, attribution ambiguity/time bounds,
+escaping, anti-aliasing, delayed/gapped mic audio, actual PCM preparation,
+subprocess execution with paths containing spaces, preserving existing outputs,
+failure/retry state, cancellation, concurrent-job rejection, recognized GPU
+allocation failure and automatic CPU retry. The subprocess
+fixture emits synthetic text; it does not establish ASR quality. The developer
+executable compiles without Swift warnings. Bundle staging retains the existing
+permission failure; no installed app was updated. App-wide selftest retains the
+previously observed swap-memory/uptime failures and hardware-service warnings.
+
+Installation initially failed tool-session sandbox extraction/network access,
+then hit an OpenSSL directory collision in the user's Terminal. After the
+dependency repair, the user successfully installed whisper.cpp 1.9.5 and the
+487,601,967-byte model; a local checksum check matches the expected SHA-256.
+No manual dependency deletion or forced linking was performed by this agent.
+
+The real engine initially aborted on Metal buffer allocation (also on an
+escalated retry). An explicit CPU run successfully processed the saved 117.59 s
+test recording: eight remote segments and three microphone segments were retained,
+four remote segments received caption-text-matched display names, and four stayed
+Remote. The microphone decoder emitted one additional segment entirely outside
+audible ranges, which was excluded. Timestamps are finite, chronological and
+within the recording duration. Both source languages were detected as English.
+The 1,188-byte transcript and updated manifest have mode 0600; engine JSON and
+timestamped turns remain in the private attempt folder. No meeting text or
+identities were copied into this document or printed during verification.
+
+Seven of eight remote segments have at least 85% word overlap with a nearby
+caption row (median best overlap 97.4%). This is a check against another ASR
+system, not a human accuracy score or proof of speaker identity. The actual
+transcript needs user review. Automatic post-call UI transcription still needs
+a test after restarting the rebuilt trial; offline recognition does not establish
+that UI lifecycle.
+
+The rebuilt default command was also run on the earlier 67.35 s two-source
+recording. It automatically recognized the Metal allocation failure, retried on
+CPU, continued the second source on CPU and published seven segments. Its
+manifest reports audio `complete`, transcription `complete` and backend
+`cpuFallback`. That earlier call had no saved caption rows, so no remote names
+were assigned. This verifies the fallback with the actual engine and recorded
+audio, in addition to the synthetic subprocess tests.
 
 Source capture uses Vorssaint's existing app-specific CoreAudio process tap
 (macOS 14.4+) and microphone collector. It does not capture video or operate Teams
@@ -64,7 +193,8 @@ For a live check, use a non-sensitive short call: record remote speech, optional
 enable the microphone and speak while unmuted/muted, stop from the menu, and play
 the mixed file. Check both voices and muted intervals. Then test hang-up with
 Teams windows both closed and left open. Do not use a real meeting as the first
-recording test. The UI and hardware paths have not yet been exercised here.
+recording test. Basic capture UI, permissions and both sources have live evidence
+below; concurrent sharing and the other listed hardware states remain unverified.
 
 ## Run the inspector
 

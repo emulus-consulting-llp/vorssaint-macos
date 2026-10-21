@@ -259,6 +259,9 @@ if (( TEST )); then
         Sources/Vorssaint/Services/Meetings/TeamsCallObservation.swift
         Sources/Vorssaint/Services/Meetings/TeamsRecordingPolicy.swift
         Sources/Vorssaint/Services/Meetings/TeamsAudioWriter.swift
+        Sources/Vorssaint/Services/Meetings/TeamsASRAudio.swift
+        Sources/Vorssaint/Services/Meetings/TeamsTranscript.swift
+        Sources/Vorssaint/Services/Meetings/TeamsTranscriptionService.swift
         Sources/Vorssaint/Services/Meetings/TeamsAudioWriteQueue.swift
         Sources/Vorssaint/Services/Meetings/TeamsMicrophoneFilter.swift
         Sources/Vorssaint/Services/Meetings/TeamsAccessibilityMonitor.swift

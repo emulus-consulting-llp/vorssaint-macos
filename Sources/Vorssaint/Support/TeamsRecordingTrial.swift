@@ -47,6 +47,9 @@ final class TeamsRecordingTrial: NSObject, NSApplicationDelegate, NSWindowDelega
     private let stopItem = NSMenuItem(title: "Stop and Save", action: #selector(stopRecording), keyEquivalent: "s")
     private var prompt: NSWindow?
     private var microphone: NSButton?
+    private var transcription: NSButton?
+    private var transcriptionConfiguration: TeamsTranscriptionService.Configuration?
+    private var transcriptionCancellation: BoundedProcessCancellation?
     private var signalSources: [DispatchSourceSignal] = []
 
     init(parent: URL) { self.parent = parent }
@@ -93,7 +96,7 @@ final class TeamsRecordingTrial: NSObject, NSApplicationDelegate, NSWindowDelega
     }
 
     private func scan() {
-        guard !scanning, !quitting else { return }
+        guard !scanning, !quitting, !finishing else { return }
         scanning = true
         let pid = NSWorkspace.shared.runningApplications.first {
             $0.bundleIdentifier == TeamsAccessibilityMonitor.bundleIdentifier
@@ -101,7 +104,7 @@ final class TeamsRecordingTrial: NSObject, NSApplicationDelegate, NSWindowDelega
         scanner.scan(pid: pid) { [weak self] reading in
             guard let self else { return }
             self.scanning = false
-            guard !self.quitting else { return }
+            guard !self.quitting, !self.finishing else { return }
             self.current = reading
             let effects = self.policy.observe(reading.evidence, at: reading.ended)
             if let session = self.session, !self.finishing {
@@ -144,7 +147,7 @@ final class TeamsRecordingTrial: NSObject, NSApplicationDelegate, NSWindowDelega
 
     private func showPrompt() {
         guard prompt == nil, let current else { return }
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 310),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 380),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Teams Recorder Trial"
         window.isReleasedWhenClosed = false
@@ -152,10 +155,15 @@ final class TeamsRecordingTrial: NSObject, NSApplicationDelegate, NSWindowDelega
         let title = NSTextField(wrappingLabelWithString: "Teams call detected: \(current.title)")
         title.font = .boldSystemFont(ofSize: 15)
         let explanation = NSTextField(wrappingLabelWithString:
-            "Record Teams audio and save locally to:\n\(parent.path)\n\nThis trial saves audio and caption observations. Transcripts and action items are not available yet. The microphone uses your Mac’s default input; headphones reduce echo.")
+            "Record Teams audio and save locally to:\n\(parent.path)\n\nThis trial saves audio and caption observations. Optional whisper.cpp transcription stays on this Mac. Action items are not available yet. The microphone uses your Mac’s default input; headphones reduce echo.")
         let microphone = NSButton(checkboxWithTitle: "Include microphone with best-effort Teams mute filtering", target: nil, action: nil)
         microphone.state = .off
         self.microphone = microphone
+        let available = TeamsTranscriptionService.Configuration.installed != nil
+        let transcription = NSButton(checkboxWithTitle: available ? "Transcribe locally after saving audio" : "Local transcription unavailable — run Tools/setup-teams-transcription.sh", target: nil, action: nil)
+        transcription.state = available ? .on : .off
+        transcription.isEnabled = available
+        self.transcription = transcription
         let caveat = NSTextField(wrappingLabelWithString: "Mute checks can miss brief changes and exclude some speech. Leave microphone off if private room speech must never be saved.")
         caveat.font = .systemFont(ofSize: 11)
         caveat.textColor = .secondaryLabelColor
@@ -166,7 +174,7 @@ final class TeamsRecordingTrial: NSObject, NSApplicationDelegate, NSWindowDelega
         skip.bezelStyle = .rounded
         let buttons = NSStackView(views: [skip, start])
         buttons.orientation = .horizontal
-        let stack = NSStackView(views: [title, explanation, microphone, caveat, buttons])
+        let stack = NSStackView(views: [title, explanation, microphone, caveat, transcription, buttons])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 12
@@ -189,6 +197,7 @@ final class TeamsRecordingTrial: NSObject, NSApplicationDelegate, NSWindowDelega
             policy.dismiss()
             prompt = nil
             microphone = nil
+            transcription = nil
         }
     }
 
@@ -197,6 +206,7 @@ final class TeamsRecordingTrial: NSObject, NSApplicationDelegate, NSWindowDelega
         prompt?.close()
         prompt = nil
         microphone = nil
+        transcription = nil
     }
 
     @objc private func skipCall() { policy.dismiss(); closePrompt() }
@@ -209,6 +219,7 @@ final class TeamsRecordingTrial: NSObject, NSApplicationDelegate, NSWindowDelega
             return
         }
         let includesMicrophone = microphone?.state == .on
+        transcriptionConfiguration = transcription?.state == .on ? TeamsTranscriptionService.Configuration.installed : nil
         recordingID = policy.callID
         closePrompt()
         starting = true
@@ -285,9 +296,27 @@ final class TeamsRecordingTrial: NSObject, NSApplicationDelegate, NSWindowDelega
         stopItem.isEnabled = false
         stateItem.title = "Saving audio…"
         Task { [self] in
-            let message = await session.stop(reason: stopReason)
+            var message = await session.stop(reason: stopReason)
             self.session = nil
             recordingID = nil
+            if !quitting, let configuration = transcriptionConfiguration {
+                let cancellation = BoundedProcessCancellation()
+                transcriptionCancellation = cancellation
+                stateItem.title = "Transcribing locally…"
+                let folder = session.folder
+                do {
+                    let result = try await Task.detached {
+                        try await TeamsTranscriptionService.transcribe(folder: folder,
+                            configuration: configuration, cancellation: cancellation)
+                    }.value
+                    message += "\n\nSaved transcript.md locally (\(result.turns) turns). Review recognition and speaker labels."
+                } catch {
+                    message += "\n\n" + ((error as? TeamsTranscriptionService.Failure)?.localizedDescription
+                        ?? "Local transcription could not finish. Saved audio is available for retry.")
+                }
+                transcriptionCancellation = nil
+            }
+            transcriptionConfiguration = nil
             finishing = false
             policy.didFinish()
             status?.button?.title = "Teams ◯"
@@ -311,6 +340,10 @@ final class TeamsRecordingTrial: NSObject, NSApplicationDelegate, NSWindowDelega
         quitting = true
         timer?.invalidate()
         closePrompt()
+        if let transcriptionCancellation {
+            transcriptionCancellation.cancel()
+            return // The finishing task updates the manifest, then shuts down.
+        }
         if starting || session != nil {
             stopReason = "Trial quit."
             _ = policy.requestStop()
