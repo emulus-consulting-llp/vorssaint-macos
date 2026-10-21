@@ -6,6 +6,7 @@ import AVFoundation
 enum TeamsTranscriptionTests {
     static func run(_ suite: TestSuite) {
         do { try parsing(suite) } catch { suite.expect(false, "transcript parsing: \(error)") }
+        do { try captions(suite) } catch { suite.expect(false, "caption export: \(error)") }
         downsampling(suite)
         let allocation = BoundedProcessRunner.Result(status: 6,
             output: Data("ggml_metal_buffer_init: error: failed to allocate buffer".utf8), timedOut: false)
@@ -24,6 +25,20 @@ enum TeamsTranscriptionTests {
     }
 
     private static func parsing(_ suite: TestSuite) throws {
+        var splitToken = Data("{\"transcription\":[{\"offsets\":{\"from\":0,\"to\":1000},\"text\":\"Hello नमस्ते\",\"tokens\":[{\"text\":\"".utf8)
+        splitToken.append(contentsOf: [0xe0, 0xa4])
+        splitToken.append(Data("\"}]}]}".utf8))
+        let recovered = try TeamsTranscriptTurn.decodeWhisper(splitToken, source: .system,
+            offset: 0, duration: 1, audibleRanges: [0...1])
+        suite.expect(recovered.first?.text == "Hello नमस्ते", "split UTF-8 in unused full-output token diagnostics cannot destroy valid multilingual sentence text")
+        let corruptSpeech = Data("{\"transcription\":[{\"offsets\":{\"from\":0,\"to\":1000},\"text\":\"bad � speech\"}]}".utf8)
+        do {
+            _ = try TeamsTranscriptTurn.decodeWhisper(corruptSpeech, source: .system,
+                offset: 0, duration: 1, audibleRanges: [0...1])
+            suite.expect(false, "corrupt sentence text must be rejected")
+        } catch TeamsTranscriptionService.Failure.output {
+            suite.expect(true, "invalid sentence text is not silently published")
+        }
         let json = Data("""
         {"transcription":[
           {"offsets":{"from":100,"to":400},"text":"Please send the review tomorrow."},
@@ -63,6 +78,45 @@ enum TeamsTranscriptionTests {
                      "meeting text cannot inject Markdown links or HTML")
         suite.expect(markdown.range(of: "[00:00:02]")!.lowerBound < markdown.range(of: "[00:10:00]")!.lowerBound,
                      "merged sources render chronologically")
+    }
+
+    private static func captions(_ suite: TestSuite) throws {
+        var journal = Data()
+        func event(_ time: Double, _ lines: [(String, String)]) throws {
+            var observation = TeamsCallObservation()
+            observation.captionLines = lines.enumerated().map { index, row in
+                .init(speakerDisplayName: row.0, text: row.1, sourcePath: "slot/\(index)")
+            }
+            let object: [String: Any] = ["scanEnded": time,
+                "observation": try JSONSerialization.jsonObject(with: JSONEncoder().encode(observation))]
+            journal.append(try JSONSerialization.data(withJSONObject: object))
+            journal.append(10)
+        }
+        try event(1, [("A", "Please send the draft")])
+        try event(2, [("A", "Please send the draft tomorrow."), ("B", "Yes, thank you.")])
+        try event(3, [("A", "Please send the draft tomorrow."), ("B", "Yes, thank you.")])
+        try event(4, [])
+        try event(5, [("B", "Yes, thank you.")])
+        try event(40, [("A", "Please send the draft tomorrow.")])
+        let rows = try TeamsCaptions.rows(journal: journal)
+        suite.expect(rows.count == 3 && rows[0].text == "Please send the draft tomorrow.",
+                     "caption revisions and repeated snapshots collapse while later repeated speech survives")
+        suite.expect(rows[0].firstObserved == 1 && rows[0].lastObserved == 3 && rows[2].firstObserved == 40,
+                     "caption times retain observation history rather than claiming speech timing")
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("teams captions \(UUID())")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try journal.write(to: folder.appendingPathComponent("observations.jsonl"))
+        let count = try TeamsCaptions.export(folder: folder)
+        let markdown = folder.appendingPathComponent("captions.md")
+        suite.expect(count == 3 && FileManager.default.fileExists(atPath: folder.appendingPathComponent("captions.json").path),
+                     "caption export is available without ASR or a speech model")
+        let permissions = try FileManager.default.attributesOfItem(atPath: markdown.path)[.posixPermissions] as? Int
+        suite.expect(permissions == 0o600, "caption exports are owner-only")
+        try Data("user notes".utf8).write(to: markdown)
+        try TeamsCaptions.export(folder: folder)
+        let preserved = try String(contentsOf: markdown, encoding: .utf8)
+        suite.expect(preserved == "user notes", "caption retries preserve user-edited output")
     }
 
     private static func downsampling(_ suite: TestSuite) {

@@ -23,7 +23,15 @@ struct TeamsTranscriptTurn: Codable {
     static func decodeWhisper(_ data: Data, source: RecorderAudioSource,
                               offset: Double, duration: Double,
                               audibleRanges: [ClosedRange<Double>]) throws -> [TeamsTranscriptTurn] {
-        let output = try JSONDecoder().decode(WhisperOutput.self, from: data)
+        // Older -ojf output can contain incomplete UTF-8 bytes in token
+        // diagnostics (multilingual tokens may split a scalar). They are not
+        // speech text. Decode those unused fields tolerantly, but never publish
+        // repaired/corrupt sentence text as a successful transcript.
+        let normalized = Data(String(decoding: data, as: UTF8.self).utf8)
+        let output = try JSONDecoder().decode(WhisperOutput.self, from: normalized)
+        guard !output.transcription.contains(where: { $0.text.contains("\u{FFFD}") }) else {
+            throw TeamsTranscriptionService.Failure.output
+        }
         return output.transcription.compactMap { segment in
             let start = segment.offsets.from / 1_000
             let end = min(duration, segment.offsets.to / 1_000)
@@ -53,7 +61,7 @@ struct TeamsTranscriptTurn: Codable {
         return result
     }
 
-    private static func escape(_ value: String) -> String {
+    static func escape(_ value: String) -> String {
         var text = value.replacingOccurrences(of: "\n", with: " ").replacingOccurrences(of: "\r", with: " ")
         for character in ["\\", "`", "*", "_", "[", "]", "!", "#", "|"] {
             text = text.replacingOccurrences(of: character, with: "\\" + character)

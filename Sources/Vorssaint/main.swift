@@ -5,7 +5,8 @@ import AppKit
 
 #if VORSSAINT_DEVELOPMENT
 // Diagnostics must run before defaults, device services or recovery hooks.
-if CommandLine.arguments.contains(TeamsTranscriptionCommand.flag) {
+if CommandLine.arguments.contains(TeamsTranscriptionCommand.flag)
+    || CommandLine.arguments.contains(TeamsTranscriptionCommand.captionsFlag) {
     TeamsTranscriptionCommand.runAndExit()
 }
 if CommandLine.arguments.contains(TeamsRecordingTrial.flag) {

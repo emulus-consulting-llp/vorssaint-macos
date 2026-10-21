@@ -224,6 +224,12 @@ private final class TeamsAudioSink: @unchecked Sendable {
             messages.append("No microphone audio passed the mute filter.")
         }
         if writer.dropped > 0 { messages.append("Some audio buffers were dropped (\(writer.dropped)).") }
+        do {
+            let count = try TeamsCaptions.export(folder: folder)
+            manifest["captionsFile"] = "captions.md"
+            manifest["captionRows"] = count
+            if count == 0 { messages.append("No Teams captions were observed. Turn on live captions in Teams to save them.") }
+        } catch { messages.append("Caption export failed; raw observations were retained.") }
         manifest["state"] = mixComplete ? (messages.isEmpty ? "complete" : "completeWithWarnings") : "incomplete"
         manifest["remoteAudioVerified"] = remoteHeard.value
         manifest["remoteBuffers"] = writer.counts[.system, default: 0]
@@ -239,7 +245,7 @@ private final class TeamsAudioSink: @unchecked Sendable {
         manifest["peakQueuedAudioBytes"] = writes.peakBytes
         manifest["warnings"] = messages
         do { try saveManifest() } catch { messages.append("Could not update the recording manifest.") }
-        return messages.isEmpty ? "Audio saved. Transcription and action items are not implemented yet." : messages.joined(separator: "\n")
+        return messages.isEmpty ? "Audio and Teams captions saved locally." : messages.joined(separator: "\n")
     }
 
     private func saveManifest() throws {

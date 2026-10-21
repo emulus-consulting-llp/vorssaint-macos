@@ -5,9 +5,20 @@ import Foundation
 
 enum TeamsTranscriptionCommand {
     static let flag = "--teams-transcribe"
+    static let captionsFlag = "--teams-export-captions"
 
     static func runAndExit() -> Never {
         let arguments = CommandLine.arguments
+        if arguments.count == 3, arguments[1] == captionsFlag, arguments[2].hasPrefix("/") {
+            do {
+                let count = try TeamsCaptions.export(folder: URL(fileURLWithPath: arguments[2]))
+                print("Saved captions.md and captions.json locally (\(count) caption rows).")
+                exit(0)
+            } catch {
+                fputs("Caption export failed. The original journal was preserved.\n", stderr)
+                exit(1)
+            }
+        }
         guard arguments.count >= 3, arguments[1] == flag, arguments[2].hasPrefix("/") else { usage() }
         var configuration = TeamsTranscriptionService.Configuration.installed
         var executable: URL?, model: URL?

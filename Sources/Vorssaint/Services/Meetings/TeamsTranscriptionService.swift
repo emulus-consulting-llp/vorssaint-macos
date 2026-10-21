@@ -89,6 +89,11 @@ enum TeamsTranscriptionService {
         try save("processing")
         do {
             if cancellation.isCancelled { throw Failure.cancelled }
+            // Captions remain available even if speech recognition fails.
+            if let count = try? TeamsCaptions.export(folder: folder) {
+                manifest["captionsFile"] = "captions.md"
+                manifest["captionRows"] = count
+            }
             let job = folder.appendingPathComponent("transcription-\(UUID())", isDirectory: true)
             try FileManager.default.createDirectory(at: job, withIntermediateDirectories: false,
                 attributes: [.posixPermissions: 0o700])
@@ -115,7 +120,7 @@ enum TeamsTranscriptionService {
                 progress("Transcribing locally (\(index + 1)/\(chunks.count))…")
                 let prefix = chunk.url.deletingPathExtension()
                 var arguments = ["-m", configuration.model.path, "-f", chunk.url.path,
-                    "-l", configuration.language, "-ojf", "-of", prefix.path, "-sns"]
+                    "-l", configuration.language, "-oj", "-of", prefix.path, "-sns"]
                 // Do not use -np: it also suppresses Metal's failure reason.
                 // All output is bounded and captured privately by the runner.
                 if cpuOnly { arguments.append("-ng") }
@@ -148,8 +153,11 @@ enum TeamsTranscriptionService {
                 guard let size = try? output.resourceValues(forKeys: [.fileSizeKey]).fileSize,
                       size <= 128 * 1_024 * 1_024 else { throw Failure.output }
                 try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: output.path)
-                let decoded = try TeamsTranscriptTurn.decodeWhisper(Data(contentsOf: output), source: chunk.source,
-                    offset: chunk.offset, duration: chunk.duration, audibleRanges: chunk.audibleRanges)
+                let decoded: [TeamsTranscriptTurn]
+                do {
+                    decoded = try TeamsTranscriptTurn.decodeWhisper(Data(contentsOf: output), source: chunk.source,
+                        offset: chunk.offset, duration: chunk.duration, audibleRanges: chunk.audibleRanges)
+                } catch { throw Failure.output }
                 turns.append(contentsOf: decoded.map { captions?.attribute($0) ?? $0 })
                 try FileManager.default.removeItem(at: chunk.url)
             }
@@ -165,9 +173,12 @@ enum TeamsTranscriptionService {
             guard link(draft.path, transcript.path) == 0 else { throw Failure.output }
             manifest["transcriptFile"] = "transcript.md"
             manifest["transcriptionTurns"] = turns.count
+            manifest.removeValue(forKey: "transcriptionError")
             try save("complete")
             return .init(turns: turns.count, namedRemoteTurns: turns.filter { $0.attribution == "captionTextMatch" }.count, folder: folder)
         } catch {
+            manifest["transcriptionError"] = (error as? Failure)?.localizedDescription
+                ?? "Local transcription could not finish. Saved audio was preserved."
             try? save(cancellation.isCancelled ? "cancelled" : "failed")
             throw error
         }
