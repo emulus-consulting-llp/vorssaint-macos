@@ -50,6 +50,42 @@ enum TeamsTranscriptionService {
             || diagnostic.contains("failed to allocate metal buffer")
     }
 
+    /// Recover an earlier engine result only when the exact PCM input matches,
+    /// the output declares the same model/language, and neither the model nor
+    /// executable has changed since it was written. Legacy failed attempts also
+    /// carry these inputs, allowing a decoder fix to recover their work.
+    static func cachedOutput(chunk: TeamsASRAudio.Chunk, attempts: [URL],
+                             configuration: Configuration) -> Data? {
+        let keys: Set<URLResourceKey> = [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey, .isSymbolicLinkKey]
+        // URL resource values may cache dates across retries. Stat the current
+        // targets so a replaced model or Homebrew symlink invalidates the cache.
+        func modified(_ url: URL) -> Date? {
+            (try? FileManager.default.attributesOfItem(atPath: url.resolvingSymlinksInPath().path))?[.modificationDate] as? Date
+        }
+        guard let input = try? Data(contentsOf: chunk.url),
+              let modelDate = modified(configuration.model),
+              let engineDate = modified(configuration.executable) else { return nil }
+        for attempt in attempts.prefix(16) {
+            let wave = attempt.appendingPathComponent(chunk.url.lastPathComponent)
+            let output = wave.deletingPathExtension().appendingPathExtension("json")
+            guard let info = try? output.resourceValues(forKeys: keys), info.isRegularFile == true,
+                  info.isSymbolicLink != true, let size = info.fileSize, size <= 32 * 1_024 * 1_024,
+                  let date = info.contentModificationDate, date >= modelDate, date >= engineDate,
+                  let waveInfo = try? wave.resourceValues(forKeys: keys), waveInfo.isRegularFile == true,
+                  waveInfo.isSymbolicLink != true, waveInfo.fileSize == input.count,
+                  let previous = try? Data(contentsOf: wave), previous == input,
+                  let data = try? Data(contentsOf: output),
+                  let object = try? JSONSerialization.jsonObject(with: Data(String(decoding: data, as: UTF8.self).utf8)) as? [String: Any],
+                  let parameters = object["params"] as? [String: Any],
+                  parameters["model"] as? String == configuration.model.path,
+                  parameters["language"] as? String == configuration.language,
+                  parameters["translate"] as? Bool == false,
+                  object["transcription"] is [[String: Any]] else { continue }
+            return data
+        }
+        return nil
+    }
+
     /// Call off the main actor. Only this serial job owns the manifest after
     /// recording finalization; the advisory lock also protects offline retries.
     static func transcribe(folder: URL, configuration: Configuration,
@@ -94,6 +130,12 @@ enum TeamsTranscriptionService {
                 manifest["captionsFile"] = "captions.md"
                 manifest["captionRows"] = count
             }
+            let attempts = ((try? FileManager.default.contentsOfDirectory(at: folder,
+                includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey])) ?? []).filter {
+                guard $0.lastPathComponent.hasPrefix("transcription-"),
+                      let values = try? $0.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]) else { return false }
+                return values.isDirectory == true && values.isSymbolicLink != true
+            }.sorted { $0.lastPathComponent < $1.lastPathComponent }
             let job = folder.appendingPathComponent("transcription-\(UUID())", isDirectory: true)
             try FileManager.default.createDirectory(at: job, withIntermediateDirectories: false,
                 attributes: [.posixPermissions: 0o700])
@@ -114,42 +156,49 @@ enum TeamsTranscriptionService {
             }
             var turns: [TeamsTranscriptTurn] = []
             var cpuOnly = configuration.cpuOnly
+            var reused = 0
             manifest["transcriptionBackend"] = cpuOnly ? "cpu" : "automatic"
             for (index, chunk) in chunks.enumerated() {
                 if cancellation.isCancelled { throw Failure.cancelled }
                 progress("Transcribing locally (\(index + 1)/\(chunks.count))…")
                 let prefix = chunk.url.deletingPathExtension()
-                var arguments = ["-m", configuration.model.path, "-f", chunk.url.path,
-                    "-l", configuration.language, "-oj", "-of", prefix.path, "-sns"]
-                // Do not use -np: it also suppresses Metal's failure reason.
-                // All output is bounded and captured privately by the runner.
-                if cpuOnly { arguments.append("-ng") }
-                func run() -> BoundedProcessRunner.Result {
-                    BoundedProcessRunner.run(configuration.executable.path, arguments,
-                    timeout: max(120, chunk.duration * 8), maxOutputBytes: 128 * 1_024,
-                    environment: ["PATH": "/usr/bin:/bin", "HOME": NSHomeDirectory(), "TMPDIR": NSTemporaryDirectory()],
-                    cancellation: cancellation)
-                }
-                var result = run()
-                if !cancellation.isCancelled, !cpuOnly, canRetryOnCPU(result) {
-                    try? TeamsAXDiagnostic.writePrivateReport(result.output,
-                        to: prefix.appendingPathExtension("gpu-failure.log"))
-                    cpuOnly = true
-                    manifest["transcriptionBackend"] = "cpuFallback"
-                    warnings.append("GPU buffer allocation failed; local transcription used the CPU fallback.")
-                    progress("GPU allocation failed; retrying locally on CPU…")
-                    arguments.append("-ng")
-                    result = run()
-                }
-                if cancellation.isCancelled { throw Failure.cancelled }
-                guard result.status == 0, !result.timedOut else {
-                    // Bounded diagnostics may contain speech; retain only in
-                    // the owner-only attempt folder, never console or logging.
-                    try? TeamsAXDiagnostic.writePrivateReport(result.output,
-                        to: prefix.appendingPathExtension("failure.log"))
-                    throw Failure.engine
-                }
                 let output = prefix.appendingPathExtension("json")
+                if let cached = cachedOutput(chunk: chunk, attempts: attempts, configuration: configuration) {
+                    try TeamsAXDiagnostic.writePrivateReport(cached, to: output)
+                    reused += 1
+                    progress("Recovered saved transcription (\(index + 1)/\(chunks.count))…")
+                } else {
+                    var arguments = ["-m", configuration.model.path, "-f", chunk.url.path,
+                        "-l", configuration.language, "-oj", "-of", prefix.path, "-sns"]
+                    // Do not use -np: it also suppresses Metal's failure reason.
+                    // All output is bounded and captured privately by the runner.
+                    if cpuOnly { arguments.append("-ng") }
+                    func run() -> BoundedProcessRunner.Result {
+                        BoundedProcessRunner.run(configuration.executable.path, arguments,
+                        timeout: max(120, chunk.duration * 8), maxOutputBytes: 128 * 1_024,
+                        environment: ["PATH": "/usr/bin:/bin", "HOME": NSHomeDirectory(), "TMPDIR": NSTemporaryDirectory()],
+                        cancellation: cancellation)
+                    }
+                    var result = run()
+                    if !cancellation.isCancelled, !cpuOnly, canRetryOnCPU(result) {
+                        try? TeamsAXDiagnostic.writePrivateReport(result.output,
+                            to: prefix.appendingPathExtension("gpu-failure.log"))
+                        cpuOnly = true
+                        manifest["transcriptionBackend"] = "cpuFallback"
+                        warnings.append("GPU buffer allocation failed; local transcription used the CPU fallback.")
+                        progress("GPU allocation failed; retrying locally on CPU…")
+                        arguments.append("-ng")
+                        result = run()
+                    }
+                    if cancellation.isCancelled { throw Failure.cancelled }
+                    guard result.status == 0, !result.timedOut else {
+                        // Bounded diagnostics may contain speech; retain only in
+                        // the owner-only attempt folder, never console or logging.
+                        try? TeamsAXDiagnostic.writePrivateReport(result.output,
+                            to: prefix.appendingPathExtension("failure.log"))
+                        throw Failure.engine
+                    }
+                }
                 guard let size = try? output.resourceValues(forKeys: [.fileSizeKey]).fileSize,
                       size <= 128 * 1_024 * 1_024 else { throw Failure.output }
                 try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: output.path)
@@ -159,7 +208,6 @@ enum TeamsTranscriptionService {
                         offset: chunk.offset, duration: chunk.duration, audibleRanges: chunk.audibleRanges)
                 } catch { throw Failure.output }
                 turns.append(contentsOf: decoded.map { captions?.attribute($0) ?? $0 })
-                try FileManager.default.removeItem(at: chunk.url)
             }
             if cancellation.isCancelled { throw Failure.cancelled }
             turns.sort { $0.start < $1.start }
@@ -173,8 +221,12 @@ enum TeamsTranscriptionService {
             guard link(draft.path, transcript.path) == 0 else { throw Failure.output }
             manifest["transcriptFile"] = "transcript.md"
             manifest["transcriptionTurns"] = turns.count
+            manifest["transcriptionReusedChunks"] = reused
             manifest.removeValue(forKey: "transcriptionError")
             try save("complete")
+            // Keep matching inputs until the entire job publishes so a later
+            // failure/cancellation can reuse earlier successful chunks.
+            for chunk in chunks { try? FileManager.default.removeItem(at: chunk.url) }
             return .init(turns: turns.count, namedRemoteTurns: turns.filter { $0.attribution == "captionTextMatch" }.count, folder: folder)
         } catch {
             manifest["transcriptionError"] = (error as? Failure)?.localizedDescription

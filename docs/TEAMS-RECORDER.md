@@ -125,6 +125,13 @@ the captions or audio. Invalid JSON structure still fails explicitly.
 Transcription errors are recorded in the manifest and never erase saved audio
 or caption exports.
 
+Retries can reuse completed chunk results from a failed attempt when the PCM
+input matches byte for byte, model path/language/translation settings match,
+and the model and engine have not changed since the result was written. Temporary
+WAV inputs are retained until the whole transcript publishes, allowing a later
+decoder fix or interrupted run to recover prior work. Audio from another chunk
+or recording is never accepted merely because its filename matches.
+
 The service automatically retries on CPU after a recognized Metal buffer
 allocation failure and uses CPU for the remaining chunks. Other engine errors
 and timeouts remain explicit failures. The transcript discloses a fallback;

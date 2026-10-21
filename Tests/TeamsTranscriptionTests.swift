@@ -7,6 +7,7 @@ enum TeamsTranscriptionTests {
     static func run(_ suite: TestSuite) {
         do { try parsing(suite) } catch { suite.expect(false, "transcript parsing: \(error)") }
         do { try captions(suite) } catch { suite.expect(false, "caption export: \(error)") }
+        do { try cachedResults(suite) } catch { suite.expect(false, "cached transcription: \(error)") }
         downsampling(suite)
         let allocation = BoundedProcessRunner.Result(status: 6,
             output: Data("ggml_metal_buffer_init: error: failed to allocate buffer".utf8), timedOut: false)
@@ -133,6 +134,43 @@ enum TeamsTranscriptionTests {
         var converter = TeamsASRAudio.Downsampler()
         suite.expect(converter.convert([Int32](repeating: 0, count: 9_600)).allSatisfy { $0 == 0 },
                      "digital silence stays silent")
+    }
+
+    private static func cachedResults(_ suite: TestSuite) throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("teams recovery \(UUID())")
+        let attempt = folder.appendingPathComponent("transcription-old")
+        try FileManager.default.createDirectory(at: attempt, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let executable = folder.appendingPathComponent("engine"), model = folder.appendingPathComponent("model")
+        for url in [executable, model] {
+            try Data("original".utf8).write(to: url)
+            try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 100)], ofItemAtPath: url.path)
+        }
+        let configuration = TeamsTranscriptionService.Configuration(executable: executable, model: model)
+        let input = folder.appendingPathComponent("system-0.wav")
+        try Data("exact PCM".utf8).write(to: input)
+        try FileManager.default.copyItem(at: input, to: attempt.appendingPathComponent(input.lastPathComponent))
+        let output = attempt.appendingPathComponent("system-0.json")
+        let data = try JSONSerialization.data(withJSONObject: ["params": ["model": model.path, "language": "auto", "translate": false],
+            "transcription": [["offsets": ["from": 0, "to": 1000], "text": "Recovered speech."]]])
+        try data.write(to: output)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 200)], ofItemAtPath: output.path)
+        let chunk = TeamsASRAudio.Chunk(url: input, source: .system, offset: 0, duration: 1, audibleRanges: [0...1])
+        func cached(_ config: TeamsTranscriptionService.Configuration) -> Data? {
+            TeamsTranscriptionService.cachedOutput(chunk: chunk, attempts: [attempt], configuration: config)
+        }
+        suite.expect(cached(configuration) == data, "retry can recover a completed engine result with exactly matching audio and model")
+        var language = configuration
+        language.language = "en"
+        suite.expect(cached(language) == nil, "changing recognition language invalidates a prior result")
+        try Data("other PCM".utf8).write(to: input)
+        suite.expect(cached(configuration) == nil, "different audio with the same chunk name and byte count cannot be reused")
+        try Data("exact PCM".utf8).write(to: input)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 300)], ofItemAtPath: model.path)
+        suite.expect(cached(configuration) == nil, "a replaced model invalidates old results")
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 100)], ofItemAtPath: model.path)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 300)], ofItemAtPath: executable.path)
+        suite.expect(cached(configuration) == nil, "an updated speech engine invalidates old results")
     }
 
     private static func pipeline(_ suite: TestSuite) async throws {
