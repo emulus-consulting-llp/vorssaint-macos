@@ -255,6 +255,10 @@ if (( TEST )); then
     TEST_OBJECT_DIR="build/objects/tests"
     mkdir -p "$TEST_OBJECT_DIR"
     TEST_SOURCES=(
+        Sources/Vorssaint/Services/Meetings/TeamsAXSnapshot.swift
+        Sources/Vorssaint/Services/Meetings/TeamsCallObservation.swift
+        Sources/Vorssaint/Services/Meetings/TeamsAccessibilityMonitor.swift
+        Sources/Vorssaint/Support/TeamsAXDiagnostic.swift
         Sources/Vorssaint/Services/UsageTimeline/UsageTimelineModels.swift
         Sources/Vorssaint/Services/UsageTimeline/UsageFocusSupport.swift
         Sources/Vorssaint/Services/UsageTimeline/UsageTimelineStore.swift

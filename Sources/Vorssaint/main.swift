@@ -3,6 +3,14 @@
 
 import AppKit
 
+#if VORSSAINT_DEVELOPMENT
+// Diagnostics must run before defaults, device services or recovery hooks.
+if CommandLine.arguments.contains(TeamsAXDiagnostic.flag)
+    || CommandLine.arguments.contains(TeamsAXDiagnostic.analyzeFlag) {
+    TeamsAXDiagnostic.runAndExit()
+}
+#endif
+
 SuperKeyMappingGuard.runIfRequestedAndExit()
 Defaults.register()
 NotchControlItem.keyboardLightIsSupported = { BrightnessService.keyboardLightIsSupported }
